@@ -54,7 +54,7 @@ export function App({ projectRoot }: AppProps) {
         }
       },
 
-      // Navigation
+      // Navigation (arrow keys)
       up: () => {
         if (viewMode === 'list') {
           selectByIndex(Math.max(0, selectedIndex - 1));
@@ -63,6 +63,18 @@ export function App({ projectRoot }: AppProps) {
       down: () => {
         if (viewMode === 'list') {
           selectByIndex(Math.min(agents.length - 1, selectedIndex + 1));
+        }
+      },
+
+      // Navigation (vim keys j/k)
+      j: () => {
+        if (viewMode === 'list') {
+          selectByIndex(Math.min(agents.length - 1, selectedIndex + 1));
+        }
+      },
+      k: () => {
+        if (viewMode === 'list') {
+          selectByIndex(Math.max(0, selectedIndex - 1));
         }
       },
 
@@ -83,8 +95,8 @@ export function App({ projectRoot }: AppProps) {
         refresh();
       },
 
-      // Kill
-      k: async () => {
+      // Kill agent (x key, as per README)
+      x: async () => {
         if (viewMode === 'list' && selectedAgent) {
           try {
             await controller.kill(selectedAgent.id);

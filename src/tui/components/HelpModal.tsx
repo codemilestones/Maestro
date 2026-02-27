@@ -20,18 +20,16 @@ export function HelpModal({ onClose }: HelpModalProps) {
       <Box flexDirection="column" gap={1}>
         <Box flexDirection="column">
           <Text bold>Navigation</Text>
-          <Text>  <Text color="yellow">1-9</Text>     Select agent by number</Text>
           <Text>  <Text color="yellow">↑/↓</Text>     Move selection up/down</Text>
+          <Text>  <Text color="yellow">j/k</Text>     Move selection (vim style)</Text>
+          <Text>  <Text color="yellow">1-9</Text>     Select agent by number</Text>
           <Text>  <Text color="yellow">Enter</Text>   Attach to selected agent</Text>
           <Text>  <Text color="yellow">Esc</Text>     Exit attached mode / Close modal</Text>
         </Box>
 
         <Box flexDirection="column">
           <Text bold>Actions</Text>
-          <Text>  <Text color="yellow">n</Text>       Create new agent</Text>
-          <Text>  <Text color="yellow">k</Text>       Kill selected agent</Text>
-          <Text>  <Text color="yellow">p</Text>       Create PR for agent</Text>
-          <Text>  <Text color="yellow">l</Text>       View full logs</Text>
+          <Text>  <Text color="yellow">x</Text>       Kill selected agent</Text>
           <Text>  <Text color="yellow">r</Text>       Refresh status</Text>
         </Box>
 
@@ -39,6 +37,13 @@ export function HelpModal({ onClose }: HelpModalProps) {
           <Text bold>Application</Text>
           <Text>  <Text color="yellow">?</Text>       Show this help</Text>
           <Text>  <Text color="yellow">q</Text>       Quit Maestro TUI</Text>
+        </Box>
+
+        <Box flexDirection="column" marginTop={1}>
+          <Text bold dimColor>CLI Commands</Text>
+          <Text dimColor>  maestro spawn "prompt"  Create new agent</Text>
+          <Text dimColor>  maestro pr {'<id>'}        Create PR for agent</Text>
+          <Text dimColor>  maestro logs {'<id>'}      View agent logs</Text>
         </Box>
       </Box>
 

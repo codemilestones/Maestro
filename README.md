@@ -103,13 +103,15 @@ maestro cleanup --dry-run
 | 快捷键 | 功能 |
 |--------|------|
 | `↑/↓` 或 `j/k` | 上下选择 Agent |
+| `1-9` | 按编号选择 Agent |
 | `Enter` | 进入选中 Agent 的全屏会话 |
 | `Esc` | 退出全屏会话 / 关闭弹窗 |
-| `n` | 创建新 Agent |
 | `x` | 终止选中的 Agent |
 | `r` | 刷新状态 |
 | `?` | 显示帮助 |
 | `q` | 退出 TUI |
+
+> **注意**: 创建新 Agent、创建 PR、查看日志等操作请使用对应的 CLI 命令 (`maestro spawn`, `maestro pr`, `maestro logs`)。
 
 ## 配置
 

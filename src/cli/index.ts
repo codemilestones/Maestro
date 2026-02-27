@@ -10,6 +10,7 @@ import { killCommand } from './commands/kill.js';
 import { cleanupCommand } from './commands/cleanup.js';
 import { configCommand } from './commands/config.js';
 import { recoverCommand } from './commands/recover.js';
+import { prCommand } from './commands/pr.js';
 import { recoverState } from '../state/recovery.js';
 import { LogRotation } from '../state/logRotation.js';
 import { getLogger } from '../shared/logger.js';
@@ -33,6 +34,7 @@ program.addCommand(killCommand);
 program.addCommand(cleanupCommand);
 program.addCommand(configCommand);
 program.addCommand(recoverCommand);
+program.addCommand(prCommand);
 
 // Startup tasks (only if maestro is initialized)
 async function runStartupTasks(): Promise<void> {
