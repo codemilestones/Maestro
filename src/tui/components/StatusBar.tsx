@@ -29,7 +29,7 @@ export function StatusBar({ agents }: StatusBarProps) {
       </Box>
       <Box>
         <Text dimColor>
-          [1-9] Select  [Enter] Attach  [k] Kill  [n] New  [q] Quit  [?] Help
+          [1-9] Select  [Enter] Attach  [x] Kill  [n] New  [q] Quit  [?] Help
         </Text>
       </Box>
     </Box>

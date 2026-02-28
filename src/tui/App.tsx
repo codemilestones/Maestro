@@ -1,10 +1,14 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { Box, Text, useApp } from 'ink';
 import { AgentController } from '../agent/AgentController.js';
+import { WorktreeManager } from '../worktree/WorktreeManager.js';
+import { generateTaskId } from '../shared/id.js';
+import { loadConfig } from '../shared/config.js';
 import { AgentList } from './components/AgentList.js';
 import { Preview } from './components/Preview.js';
 import { StatusBar } from './components/StatusBar.js';
 import { HelpModal } from './components/HelpModal.js';
+import { NewAgentModal } from './components/NewAgentModal.js';
 import { useAgents } from './hooks/useAgents.js';
 import { useOutput } from './hooks/useOutput.js';
 import { useKeyboard } from './hooks/useKeyboard.js';
@@ -13,7 +17,7 @@ interface AppProps {
   projectRoot?: string;
 }
 
-type ViewMode = 'list' | 'attached' | 'help';
+type ViewMode = 'list' | 'attached' | 'help' | 'new_agent';
 
 export function App({ projectRoot }: AppProps) {
   const { exit } = useApp();
@@ -106,8 +110,50 @@ export function App({ projectRoot }: AppProps) {
           }
         }
       },
+
+      // New agent (n key)
+      n: () => {
+        if (viewMode === 'list') {
+          setViewMode('new_agent');
+        }
+      },
     }),
     [viewMode, selectedAgent, selectedIndex, agents.length, selectByIndex, refresh, controller, exit]
+  );
+
+  // Handle creating a new agent
+  const handleCreateAgent = useCallback(
+    async (prompt: string) => {
+      try {
+        const config = loadConfig(projectRoot);
+        const worktreeManager = new WorktreeManager(projectRoot);
+        const taskId = generateTaskId();
+
+        // Create worktree
+        const worktree = await worktreeManager.create({
+          branch: taskId,
+          base: config.worktree.defaultBase,
+          taskId,
+        });
+
+        // Spawn agent
+        const agent = await controller.spawn({
+          prompt,
+          worktreePath: worktree.path,
+        });
+
+        // Link agent to worktree
+        controller.setWorktreeInfo(agent.id, worktree.id, worktree.branch);
+
+        // Refresh and return to list
+        refresh();
+        setViewMode('list');
+      } catch {
+        // Return to list on error
+        setViewMode('list');
+      }
+    },
+    [controller, projectRoot, refresh]
   );
 
   useKeyboard(keyboardHandlers);
@@ -118,6 +164,19 @@ export function App({ projectRoot }: AppProps) {
       <Box flexDirection="column" width="100%">
         <Header />
         <HelpModal onClose={() => setViewMode('list')} />
+      </Box>
+    );
+  }
+
+  // New agent modal
+  if (viewMode === 'new_agent') {
+    return (
+      <Box flexDirection="column" width="100%">
+        <Header />
+        <NewAgentModal
+          onSubmit={handleCreateAgent}
+          onCancel={() => setViewMode('list')}
+        />
       </Box>
     );
   }
