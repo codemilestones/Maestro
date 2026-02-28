@@ -6,12 +6,16 @@
 
 Maestro 采用 Human-to-Agents 的辐射式（Hub-Spoke）协作模型，一个人类开发者作为中心节点，同时指挥多个 Claude Code Agent。每个 Agent 在独立的 Git Worktree 中工作，确保物理隔离，避免代码冲突。
 
+Maestro 使用真正的 PTY（伪终端）会话，就像 tmux 一样，支持双向交互、会话 attach/detach，以及实时终端输出渲染。
+
 ### 核心特性
 
 - **Git Worktree 隔离**：每个 Agent 在独立的 worktree 中工作
 - **Human-in-the-Loop**：人类保持对所有 Agent 的控制
 - **TUI 界面**：类似 tmux 的多窗口管理界面
 - **PR 自动化**：自动生成包含架构契约的 PR
+- **PTY 终端复用**：真正的终端会话，支持 attach/detach
+- **工具适配器**：可扩展的工具框架，支持多种 AI 编码工具
 
 ## 安装
 
@@ -42,13 +46,16 @@ maestro init
 
 ```bash
 # 基本用法
-maestro spawn -p "实现用户登录功能"
+maestro spawn "实现用户登录功能"
 
 # 指定分支名
-maestro spawn -p "修复 #123 bug" -b fix-123
+maestro spawn "修复 #123 bug" -b fix-123
 
-# 在后台运行
-maestro spawn -p "添加单元测试" --background
+# 使用指定工具
+maestro spawn "添加单元测试" --tool claude-code
+
+# 指定友好名称
+maestro spawn "重构数据库模块" -n "db-refactor"
 ```
 
 ### 3. 查看状态
@@ -104,14 +111,30 @@ maestro cleanup --dry-run
 |--------|------|
 | `↑/↓` 或 `j/k` | 上下选择 Agent |
 | `1-9` | 按编号选择 Agent |
-| `Enter` | 进入选中 Agent 的全屏会话 |
-| `Esc` | 退出全屏会话 / 关闭弹窗 |
+| `Enter` | 进入选中 Agent 的全屏会话（attach） |
+| `n` | 创建新 Agent |
+| `a` | 归档已完成的 Agent |
 | `x` | 终止选中的 Agent |
 | `r` | 刷新状态 |
 | `?` | 显示帮助 |
 | `q` | 退出 TUI |
+| `Esc` | 关闭弹窗 |
 
-> **注意**: 创建新 Agent、创建 PR、查看日志等操作请使用对应的 CLI 命令 (`maestro spawn`, `maestro pr`, `maestro logs`)。
+### Attach 模式（全屏会话）
+
+进入 attach 模式后，终端输入直接传递给 Agent。使用 **Prefix Key** 进行控制：
+
+| 快捷键 | 功能 |
+|--------|------|
+| `Ctrl+]` | 分离（detach），返回列表视图 |
+| `Ctrl+] d` | 同上，明确分离 |
+| `Ctrl+] n` | 切换到下一个 Agent |
+| `Ctrl+] p` | 切换到上一个 Agent |
+| `Ctrl+] k` | 终止当前 Agent |
+| `Ctrl+] ?` | 显示快捷键帮助 |
+| `Ctrl+] Ctrl+]` | 发送 `Ctrl+]` 给 Agent |
+
+> **注意**: Prefix Key 使用 `Ctrl+]` 而非 `Esc`，避免与 Claude Code 的快捷键冲突。可在配置中修改。
 
 ## 配置
 
@@ -146,6 +169,19 @@ pr:
     fix: bug
     docs: documentation
   contractAnalysis: true        # 启用架构契约分析
+
+# 工具适配器配置
+tools:
+  default: claude-code          # 默认使用的工具
+  configs:                      # 工具特定配置
+    claude-code:
+      command: claude           # 命令路径
+      args: []                  # 额外参数
+
+# 会话配置
+session:
+  prefixKey: C-]                # Prefix Key（tmux 风格，Ctrl+]）
+  prefixTimeout: 500            # Prefix Key 超时（毫秒）
 ```
 
 ### 配置命令
@@ -155,10 +191,13 @@ pr:
 maestro config --get agent.maxConcurrent
 
 # 设置配置值
-maestro config --set agent.maxConcurrent 10
+maestro config --set agent.maxConcurrent=10
 
 # 查看所有配置
 maestro config --list
+
+# 列出可用的工具适配器
+maestro config --list-tools
 ```
 
 ## 架构
@@ -257,8 +296,22 @@ src/
 ├── worktree/      # Worktree 管理
 ├── agent/         # Agent 控制
 │   ├── process/   # 进程管理
-│   ├── output/    # 输出解析
+│   ├── output/    # 输出解析（已废弃）
 │   └── state/     # 状态管理
+├── pty/           # PTY 会话管理
+│   ├── PTYSession.ts    # PTY 会话封装
+│   └── RingBuffer.ts    # 输出环形缓冲区
+├── adapter/       # 工具适配器框架
+│   ├── types.ts         # 适配器接口
+│   ├── ClaudeCodeAdapter.ts  # Claude Code 适配器
+│   └── AdapterRegistry.ts    # 适配器注册表
+├── detector/      # 状态检测器
+│   ├── types.ts              # 检测器接口
+│   └── PatternStatusDetector.ts  # 正则模式检测器
+├── attach/        # 会话 Attach 功能
+│   ├── types.ts              # 类型定义
+│   ├── PrefixKeyHandler.ts   # Prefix Key 处理
+│   └── AttachSession.ts      # Attach 会话管理
 ├── tui/           # TUI 界面
 │   ├── components/# React 组件
 │   └── hooks/     # React Hooks

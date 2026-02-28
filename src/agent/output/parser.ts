@@ -1,6 +1,19 @@
+/**
+ * @deprecated This module is deprecated in favor of the PTY-based architecture.
+ *
+ * The new architecture uses:
+ * - `src/pty/PTYSession.ts` for terminal session management
+ * - `src/detector/PatternStatusDetector.ts` for status detection from terminal output
+ * - `src/agent/AgentControllerPTY.ts` for the new agent controller
+ *
+ * This module will be removed in a future version once all consumers
+ * have migrated to the PTY-based approach.
+ */
+
 import { ClaudeStreamEvent } from '../../shared/types.js';
 import { getLogger } from '../../shared/logger.js';
 
+/** @deprecated Use PatternStatusDetector instead */
 export type ParsedEventType =
   | 'message'
   | 'tool_use'

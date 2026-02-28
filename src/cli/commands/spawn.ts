@@ -4,6 +4,7 @@ import { isMaestroInitialized, loadConfig } from '../../shared/config.js';
 import { WorktreeManager } from '../../worktree/WorktreeManager.js';
 import { AgentController } from '../../agent/AgentController.js';
 import { generateTaskId } from '../../shared/id.js';
+import { adapterRegistry } from '../../adapter/index.js';
 
 export const spawnCommand = new Command('spawn')
   .description('Create a new Agent to execute a task')
@@ -11,6 +12,7 @@ export const spawnCommand = new Command('spawn')
   .option('-b, --branch <name>', 'Branch name for the worktree')
   .option('--base <branch>', 'Base branch to create from (default: main)')
   .option('-n, --name <name>', 'Friendly name for the Agent')
+  .option('-t, --tool <name>', 'Tool adapter to use (default: from config)')
   .action(async (prompt, options) => {
     // Check initialization
     if (!isMaestroInitialized()) {
@@ -23,11 +25,22 @@ export const spawnCommand = new Command('spawn')
     const worktreeManager = new WorktreeManager();
     const agentController = new AgentController();
 
+    // Validate tool if specified
+    const toolName = options.tool || config.tools.default;
+    const adapter = adapterRegistry.get(toolName);
+    if (!adapter) {
+      const available = adapterRegistry.list().map(a => a.name).join(', ');
+      console.error(chalk.red(`Error: Tool '${toolName}' not found.`));
+      console.error(chalk.gray(`Available tools: ${available}`));
+      process.exit(1);
+    }
+
     // Generate IDs
     const taskId = generateTaskId();
     const branchName = options.branch || taskId;
 
     console.log(chalk.gray(`Creating agent for: "${prompt.slice(0, 50)}${prompt.length > 50 ? '...' : ''}"`));
+    console.log(chalk.gray(`Using tool: ${adapter.displayName}`));
 
     try {
       // Create worktree

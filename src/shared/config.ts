@@ -3,6 +3,28 @@ import { join } from 'node:path';
 import { parse, stringify } from 'yaml';
 import { createGit, getDefaultBranch } from '../worktree/git.js';
 
+/**
+ * Tool-specific configuration
+ */
+export interface ToolSpecificConfig {
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  statusPatterns?: {
+    idle?: string;
+    running?: string;
+    waiting_input?: string;
+  };
+}
+
+/**
+ * Session configuration for attach mode
+ */
+export interface SessionConfig {
+  prefixKey: string;
+  prefixTimeout: number;
+}
+
 export interface MaestroConfig {
   worktree: {
     baseDir: string;
@@ -27,6 +49,11 @@ export interface MaestroConfig {
     labelMapping: Record<string, string>;
     contractAnalysis: boolean;
   };
+  tools: {
+    default: string;
+    configs: Record<string, ToolSpecificConfig>;
+  };
+  session: SessionConfig;
 }
 
 const DEFAULT_CONFIG: MaestroConfig = {
@@ -56,6 +83,14 @@ const DEFAULT_CONFIG: MaestroConfig = {
       docs: 'documentation',
     },
     contractAnalysis: true,
+  },
+  tools: {
+    default: 'claude-code',
+    configs: {},
+  },
+  session: {
+    prefixKey: 'C-]', // Ctrl+]
+    prefixTimeout: 500, // milliseconds
   },
 };
 
@@ -186,5 +221,11 @@ function mergeConfig(
       ...user.pr,
       labelMapping: { ...defaults.pr.labelMapping, ...user.pr?.labelMapping },
     },
+    tools: {
+      ...defaults.tools,
+      ...user.tools,
+      configs: { ...defaults.tools.configs, ...user.tools?.configs },
+    },
+    session: { ...defaults.session, ...user.session },
   };
 }

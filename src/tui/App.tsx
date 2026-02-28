@@ -1,10 +1,12 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { Box, Text, useApp } from 'ink';
 import { AgentController } from '../agent/AgentController.js';
+import { AgentControllerPTY } from '../agent/AgentControllerPTY.js';
 import { isTerminalState } from '../agent/state/state.js';
 import { WorktreeManager } from '../worktree/WorktreeManager.js';
 import { generateTaskId } from '../shared/id.js';
 import { loadConfig } from '../shared/config.js';
+import { formatKeyNotation } from '../attach/types.js';
 import { AgentList } from './components/AgentList.js';
 import { Preview } from './components/Preview.js';
 import { StatusBar } from './components/StatusBar.js';
@@ -192,13 +194,20 @@ export function App({ projectRoot }: AppProps) {
 
   // Attached mode - full screen output
   if (viewMode === 'attached' && selectedAgent) {
+    const config = loadConfig(projectRoot);
+    const prefixDisplay = formatKeyNotation(config.session.prefixKey);
+
     return (
       <Box flexDirection="column" width="100%">
         <Box borderStyle="single" borderColor="cyan" paddingX={1}>
           <Text bold color="cyan">
             Attached to: {selectedAgent.name || selectedAgent.id}
           </Text>
-          <Text dimColor> (Press Esc to detach)</Text>
+          <Text dimColor> (Press {prefixDisplay} to detach)</Text>
+          <Text dimColor color="gray">
+            {' '}
+            [attached]
+          </Text>
         </Box>
         <Box flexDirection="column" flexGrow={1} paddingX={1}>
           {lines.slice(-30).map((line, i) => (

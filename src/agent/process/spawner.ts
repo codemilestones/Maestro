@@ -1,3 +1,14 @@
+/**
+ * @deprecated This module uses the legacy --print and --output-format stream-json approach.
+ *
+ * The new architecture uses PTY-based sessions:
+ * - `src/pty/PTYSession.ts` for terminal session management
+ * - `src/adapter/ClaudeCodeAdapter.ts` for spawning Claude in interactive mode
+ * - `src/agent/AgentControllerPTY.ts` for the new agent controller
+ *
+ * This module will be removed once all CLI commands have migrated to AgentControllerPTY.
+ */
+
 import { execa, type ResultPromise, type Options as ExecaOptions } from 'execa';
 import { spawn as nodeSpawn, type ChildProcess, type SpawnOptions } from 'node:child_process';
 import { mkdirSync, existsSync, openSync } from 'node:fs';
