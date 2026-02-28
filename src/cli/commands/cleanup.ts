@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import { isMaestroInitialized } from '../../shared/config.js';
 import { WorktreeManager } from '../../worktree/WorktreeManager.js';
-import { AgentController } from '../../agent/AgentController.js';
+import { AgentControllerPTY } from '../../agent/AgentControllerPTY.js';
 import { isTerminalState } from '../../agent/state/state.js';
 
 export const cleanupCommand = new Command('cleanup')
@@ -17,7 +17,7 @@ export const cleanupCommand = new Command('cleanup')
     }
 
     const worktreeManager = new WorktreeManager();
-    const agentController = new AgentController();
+    const agentController = new AgentControllerPTY();
 
     const agents = agentController.listAll();
     const worktrees = await worktreeManager.list();

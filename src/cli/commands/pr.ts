@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { isMaestroInitialized } from '../../shared/config.js';
-import { AgentController } from '../../agent/AgentController.js';
+import { AgentControllerPTY } from '../../agent/AgentControllerPTY.js';
 import { WorktreeManager } from '../../worktree/WorktreeManager.js';
 import { PRGenerator } from '../../pr/PRGenerator.js';
 
@@ -19,7 +19,7 @@ export const prCommand = new Command('pr')
       process.exit(1);
     }
 
-    const agentController = new AgentController();
+    const agentController = new AgentControllerPTY();
     const worktreeManager = new WorktreeManager();
     const prGenerator = new PRGenerator();
 

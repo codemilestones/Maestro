@@ -3,7 +3,7 @@ import chalk from 'chalk';
 import { readFileSync, existsSync, watchFile } from 'node:fs';
 import { join } from 'node:path';
 import { isMaestroInitialized, getMaestroDir, LOGS_DIR } from '../../shared/config.js';
-import { AgentController } from '../../agent/AgentController.js';
+import { AgentControllerPTY } from '../../agent/AgentControllerPTY.js';
 
 export const logsCommand = new Command('logs')
   .description('View Agent output logs')
@@ -16,7 +16,7 @@ export const logsCommand = new Command('logs')
       process.exit(1);
     }
 
-    const agentController = new AgentController();
+    const agentController = new AgentControllerPTY();
     const agent = agentController.getInfo(id);
 
     if (!agent) {

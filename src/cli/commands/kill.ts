@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { isMaestroInitialized } from '../../shared/config.js';
-import { AgentController } from '../../agent/AgentController.js';
+import { AgentControllerPTY } from '../../agent/AgentControllerPTY.js';
 
 export const killCommand = new Command('kill')
   .description('Terminate a running Agent')
@@ -13,7 +13,7 @@ export const killCommand = new Command('kill')
       process.exit(1);
     }
 
-    const agentController = new AgentController();
+    const agentController = new AgentControllerPTY();
 
     // Find agent (support partial ID)
     const agents = agentController.listAll();

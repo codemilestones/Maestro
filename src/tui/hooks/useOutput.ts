@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { AgentController } from '../../agent/AgentController.js';
+import { AgentControllerPTY } from '../../agent/AgentControllerPTY.js';
 import { AgentEvent } from '../../shared/types.js';
 import { getLogger } from '../../shared/logger.js';
 
@@ -11,7 +11,7 @@ export interface UseOutputResult {
   clear: () => void;
 }
 
-export function useOutput(controller: AgentController, agentId: string | null): UseOutputResult {
+export function useOutput(controller: AgentControllerPTY, agentId: string | null): UseOutputResult {
   const [lines, setLines] = useState<string[]>([]);
 
   useEffect(() => {

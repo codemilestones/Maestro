@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import Table from 'cli-table3';
 import { isMaestroInitialized } from '../../shared/config.js';
-import { AgentController } from '../../agent/AgentController.js';
+import { AgentControllerPTY } from '../../agent/AgentControllerPTY.js';
 import { getStatusIcon, getStatusColor, getStatusText } from '../../agent/state/state.js';
 import { AgentInfo, AgentStatus } from '../../shared/types.js';
 
@@ -60,7 +60,7 @@ export const statusCommand = new Command('status')
       process.exit(1);
     }
 
-    const agentController = new AgentController();
+    const agentController = new AgentControllerPTY();
 
     const displayStatus = () => {
       const agents = agentController.listAll();

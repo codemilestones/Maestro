@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { AgentInfo, AgentEvent } from '../../shared/types.js';
-import { AgentController } from '../../agent/AgentController.js';
+import { AgentControllerPTY } from '../../agent/AgentControllerPTY.js';
 
 export interface UseAgentsResult {
   agents: AgentInfo[];
@@ -11,7 +11,7 @@ export interface UseAgentsResult {
   refresh: () => void;
 }
 
-export function useAgents(controller: AgentController): UseAgentsResult {
+export function useAgents(controller: AgentControllerPTY): UseAgentsResult {
   const [agents, setAgents] = useState<AgentInfo[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
 

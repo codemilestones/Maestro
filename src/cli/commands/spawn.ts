@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import { isMaestroInitialized, loadConfig } from '../../shared/config.js';
 import { WorktreeManager } from '../../worktree/WorktreeManager.js';
-import { AgentController } from '../../agent/AgentController.js';
+import { AgentControllerPTY } from '../../agent/AgentControllerPTY.js';
 import { generateTaskId } from '../../shared/id.js';
 import { adapterRegistry } from '../../adapter/index.js';
 
@@ -23,7 +23,7 @@ export const spawnCommand = new Command('spawn')
 
     const config = loadConfig();
     const worktreeManager = new WorktreeManager();
-    const agentController = new AgentController();
+    const agentController = new AgentControllerPTY();
 
     // Validate tool if specified
     const toolName = options.tool || config.tools.default;
@@ -57,6 +57,7 @@ export const spawnCommand = new Command('spawn')
         prompt,
         worktreePath: worktree.path,
         name: options.name,
+        tool: toolName,
       });
 
       // Link agent to worktree

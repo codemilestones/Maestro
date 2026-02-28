@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { Box, Text, useApp } from 'ink';
-import { AgentController } from '../agent/AgentController.js';
 import { AgentControllerPTY } from '../agent/AgentControllerPTY.js';
 import { isTerminalState } from '../agent/state/state.js';
 import { WorktreeManager } from '../worktree/WorktreeManager.js';
@@ -24,7 +23,7 @@ type ViewMode = 'list' | 'attached' | 'help' | 'new_agent';
 
 export function App({ projectRoot }: AppProps) {
   const { exit } = useApp();
-  const controller = useMemo(() => new AgentController(projectRoot), [projectRoot]);
+  const controller = useMemo(() => new AgentControllerPTY(projectRoot), [projectRoot]);
 
   const { agents, selectedAgent, selectedIndex, selectByIndex, refresh } = useAgents(controller);
   const { lines } = useOutput(controller, selectedAgent?.id || null);
