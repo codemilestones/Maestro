@@ -25,6 +25,7 @@ export interface AgentInfo {
   status: AgentStatus;
   pid?: number;
   createdAt: Date;
+  spawnedAt?: Date; // Timestamp when process was actually spawned (for grace period checking)
   startedAt?: Date;
   finishedAt?: Date;
   exitCode?: number;

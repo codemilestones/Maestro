@@ -1,4 +1,7 @@
 import { execa, type ResultPromise, type Options as ExecaOptions } from 'execa';
+import { spawn as nodeSpawn, type ChildProcess, type SpawnOptions } from 'node:child_process';
+import { mkdirSync, existsSync, openSync } from 'node:fs';
+import { join } from 'node:path';
 import { loadConfig, MaestroConfig } from '../../shared/config.js';
 import { getLogger, Logger } from '../../shared/logger.js';
 
@@ -10,6 +13,7 @@ export interface SpawnerOptions {
   env?: Record<string, string>;
   timeout?: number;
   skipPermissions?: boolean;
+  stdoutLogPath?: string; // Path to persist stdout for recovery
 }
 
 export interface SpawnedProcess {
@@ -44,8 +48,55 @@ export function spawnClaude(options: SpawnerOptions, config?: MaestroConfig): Sp
     claudePath,
     args: args.slice(0, -2).concat(['[prompt]']), // Don't log full prompt
     cwd: options.cwd,
+    stdoutLogPath: options.stdoutLogPath,
   });
 
+  // If stdoutLogPath is provided, use detached process with file descriptor logging
+  if (options.stdoutLogPath) {
+    // Ensure log directory exists
+    const logDir = join(options.stdoutLogPath, '..');
+    if (!existsSync(logDir)) {
+      mkdirSync(logDir, { recursive: true });
+    }
+
+    // Open file descriptor for stdout persistence (will be inherited by child process)
+    const stdoutFd = openSync(options.stdoutLogPath, 'a');
+
+    logger.debug(`Using detached process with file descriptor logging`, {
+      stdoutLogPath: options.stdoutLogPath,
+      stdoutFd,
+    });
+
+    // Use native spawn with detached mode for process independence
+    // Use file descriptor directly so writes persist after parent exits
+    const childProcess = nodeSpawn(claudePath, args, {
+      cwd: options.cwd,
+      env: {
+        ...process.env,
+        ...options.env,
+        CLAUDE_CODE_ENTRYPOINT: 'cli',
+      },
+      detached: true,
+      stdio: ['ignore', stdoutFd, stdoutFd], // stdout and stderr go to file
+    });
+
+    if (!childProcess.pid) {
+      throw new Error('Failed to spawn Claude Code process - no PID assigned');
+    }
+
+    // Allow parent to exit independently
+    childProcess.unref();
+
+    logger.info(`Claude Code process spawned (detached)`, { pid: childProcess.pid });
+
+    // Wrap in execa-compatible interface (limited functionality)
+    return {
+      process: childProcess as unknown as ExecaChildProcess,
+      pid: childProcess.pid,
+    };
+  }
+
+  // Standard spawn without persistence
   const execaOptions: ExecaOptions = {
     cwd: options.cwd,
     env: {
@@ -96,11 +147,14 @@ export function sendInput(process: ExecaChildProcess, input: string): void {
 }
 
 export function isProcessRunning(pid: number): boolean {
+  const logger = getLogger();
   try {
     // Sending signal 0 checks if process exists without affecting it
     process.kill(pid, 0);
+    logger.debug(`Process check: alive`, { pid });
     return true;
-  } catch {
+  } catch (error) {
+    logger.debug(`Process check: not found`, { pid, error: (error as Error).message });
     return false;
   }
 }

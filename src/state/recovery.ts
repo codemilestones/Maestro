@@ -1,4 +1,5 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { AgentInfo, AgentStatus } from '../shared/types.js';
 import { AgentStore } from '../agent/state/store.js';
 import { WorktreeManager } from '../worktree/WorktreeManager.js';
@@ -14,6 +15,52 @@ function isProcessRunning(pid: number): boolean {
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Get the path to the agent's stdout log file
+ */
+function getStdoutLogPath(agentId: string, projectRoot: string): string {
+  return join(projectRoot, '.maestro', 'logs', `${agentId}.stdout.jsonl`);
+}
+
+/**
+ * Check if agent completed successfully by analyzing stdout log
+ * Returns 'finished' if result event found, 'failed' if log exists but no result, null if no log
+ */
+function checkAgentCompletionFromLog(agentId: string, projectRoot: string): 'finished' | 'failed' | null {
+  const logger = getLogger();
+  const logPath = getStdoutLogPath(agentId, projectRoot);
+
+  if (!existsSync(logPath)) {
+    logger.debug('No stdout log found for agent', { id: agentId, path: logPath });
+    return null;
+  }
+
+  try {
+    const content = readFileSync(logPath, 'utf-8');
+    const lines = content.trim().split('\n').filter(Boolean);
+
+    // Look for result event (indicates successful completion)
+    for (const line of lines) {
+      try {
+        const event = JSON.parse(line);
+        if (event.type === 'result') {
+          logger.debug('Found result event in log, agent completed successfully', { id: agentId });
+          return 'finished';
+        }
+      } catch {
+        // Ignore parse errors for individual lines
+      }
+    }
+
+    // No result event found - check for error indicators
+    logger.debug('No result event found in log', { id: agentId, lineCount: lines.length });
+    return lines.length > 0 ? 'failed' : null;
+  } catch (error) {
+    logger.warn('Error reading stdout log', { id: agentId, error: (error as Error).message });
+    return null;
   }
 }
 
@@ -59,6 +106,8 @@ export async function recoverState(projectRoot?: string): Promise<RecoveryResult
   // Load all agents
   const agents = store.listAgents();
 
+  const gracePeriodMs = 5000; // 5 seconds grace period for newly spawned agents
+
   for (const agent of agents) {
     if (!needsRecovery(agent)) {
       result.unchanged.push(agent);
@@ -66,6 +115,21 @@ export async function recoverState(projectRoot?: string): Promise<RecoveryResult
     }
 
     logger.debug('Checking agent process', { id: agent.id, pid: agent.pid });
+
+    // Check grace period for newly spawned agents
+    const spawnedAt = agent.spawnedAt ? new Date(agent.spawnedAt) : null;
+    const isWithinGracePeriod = spawnedAt && (Date.now() - spawnedAt.getTime()) < gracePeriodMs;
+
+    if (isWithinGracePeriod) {
+      // Agent is within grace period, assume it's still starting up
+      logger.debug('Agent within grace period, skipping process check', {
+        id: agent.id,
+        spawnedAt: spawnedAt?.toISOString(),
+        ageMs: spawnedAt ? Date.now() - spawnedAt.getTime() : null,
+      });
+      result.recovered.push(agent);
+      continue;
+    }
 
     // Check if process is still running
     const isAlive = agent.pid ? isProcessRunning(agent.pid) : false;
@@ -75,16 +139,30 @@ export async function recoverState(projectRoot?: string): Promise<RecoveryResult
       result.recovered.push(agent);
       logger.info('Agent process still running', { id: agent.id, pid: agent.pid });
     } else {
-      // Process died unexpectedly
-      logger.warn('Agent process not found, marking as failed', { id: agent.id, pid: agent.pid });
+      // Process is not running - check stdout log to determine if it finished successfully
+      const effectiveProjectRoot = projectRoot || process.cwd();
+      const completionStatus = checkAgentCompletionFromLog(agent.id, effectiveProjectRoot);
 
-      const previousStatus = agent.status;
-      agent.status = 'failed';
-      agent.finishedAt = new Date();
-      agent.error = `Process terminated unexpectedly (was ${previousStatus})`;
+      if (completionStatus === 'finished') {
+        logger.info('Agent completed successfully (from log analysis)', { id: agent.id });
+        agent.status = 'finished';
+        agent.finishedAt = new Date();
+        store.saveAgent(agent);
+        result.recovered.push(agent);
+      } else {
+        // Process died unexpectedly or failed
+        logger.warn('Agent process not found, marking as failed', { id: agent.id, pid: agent.pid });
 
-      store.saveAgent(agent);
-      result.failed.push(agent);
+        const previousStatus = agent.status;
+        agent.status = 'failed';
+        agent.finishedAt = new Date();
+        agent.error = completionStatus === 'failed'
+          ? 'Process completed without success result'
+          : `Process terminated unexpectedly (was ${previousStatus})`;
+
+        store.saveAgent(agent);
+        result.failed.push(agent);
+      }
     }
   }
 

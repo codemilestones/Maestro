@@ -51,11 +51,26 @@ export class OutputParser {
         if (event) {
           events.push(event);
           this.dispatchEvent(event);
+        } else {
+          // parseLine returned null (not valid JSON), emit as raw text
+          this.logger.debug(`Non-JSON output, emitting as raw text`, { line: trimmed.slice(0, 100) });
+          if (this.callbacks.onMessage) {
+            this.callbacks.onMessage(trimmed);
+          }
+          events.push({
+            type: 'message',
+            raw: { type: 'system', message: { content: trimmed } },
+            content: trimmed,
+          });
         }
       } catch (error) {
         this.logger.debug(`Failed to parse line: ${trimmed}`, {
           error: error instanceof Error ? error.message : String(error),
         });
+        // Fallback: emit as raw text message
+        if (this.callbacks.onMessage) {
+          this.callbacks.onMessage(trimmed);
+        }
       }
     }
 

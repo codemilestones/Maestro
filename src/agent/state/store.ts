@@ -33,6 +33,7 @@ export class AgentStore {
       // Convert date strings back to Date objects
       for (const agent of Object.values(state.agents)) {
         agent.createdAt = new Date(agent.createdAt);
+        if (agent.spawnedAt) agent.spawnedAt = new Date(agent.spawnedAt);
         if (agent.startedAt) agent.startedAt = new Date(agent.startedAt);
         if (agent.finishedAt) agent.finishedAt = new Date(agent.finishedAt);
       }
@@ -64,9 +65,11 @@ export class AgentStore {
   }
 
   saveAgent(agent: AgentInfo): void {
+    this.logger.debug(`Saving agent`, { id: agent.id, status: agent.status });
     const state = this.load();
     state.agents[agent.id] = agent;
     this.save(state);
+    this.logger.debug(`Agent saved successfully`, { id: agent.id });
   }
 
   deleteAgent(id: string): void {

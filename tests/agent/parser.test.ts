@@ -30,10 +30,13 @@ describe('OutputParser', () => {
       expect(events[0].content).toBe('Task completed');
     });
 
-    it('should skip invalid JSON lines', () => {
+    it('should emit non-JSON lines as raw text messages', () => {
       const parser = new OutputParser();
       const events = parser.feed('not valid json\n');
-      expect(events).toHaveLength(0);
+      // Non-JSON lines are now emitted as raw text for display
+      expect(events).toHaveLength(1);
+      expect(events[0].type).toBe('message');
+      expect(events[0].content).toBe('not valid json');
     });
 
     it('should handle incomplete lines (buffer)', () => {

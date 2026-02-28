@@ -1,5 +1,7 @@
 import { type ExecaChildProcess } from './process/spawner.js';
 import { Readable } from 'node:stream';
+import { existsSync, readFileSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { AgentInfo, AgentStatus, AgentMetrics, AgentSpawnOptions, AgentEvent, AgentEventHandler } from '../shared/types.js';
 import { generateAgentId } from '../shared/id.js';
 import { loadConfig, MaestroConfig } from '../shared/config.js';
@@ -38,29 +40,127 @@ export class AgentController {
     this.restoreAgents();
   }
 
+  /** Get the path to the agent's stdout log file */
+  private getStdoutLogPath(agentId: string): string {
+    const logsDir = join(this.projectRoot, '.maestro', 'logs');
+    return join(logsDir, `${agentId}.stdout.jsonl`);
+  }
+
+  /** Ensure logs directory exists */
+  private ensureLogsDir(): void {
+    const logsDir = join(this.projectRoot, '.maestro', 'logs');
+    if (!existsSync(logsDir)) {
+      mkdirSync(logsDir, { recursive: true });
+    }
+  }
+
+  /** Check if agent completed successfully by analyzing stdout log */
+  private checkAgentCompletionFromLog(agentId: string): 'finished' | 'failed' | null {
+    const logPath = this.getStdoutLogPath(agentId);
+    if (!existsSync(logPath)) {
+      this.logger.debug(`No stdout log found for agent`, { id: agentId, path: logPath });
+      return null;
+    }
+
+    try {
+      const content = readFileSync(logPath, 'utf-8');
+      const lines = content.trim().split('\n').filter(Boolean);
+
+      // Look for result event (indicates successful completion)
+      for (const line of lines) {
+        try {
+          const event = JSON.parse(line);
+          if (event.type === 'result') {
+            this.logger.debug(`Found result event in log, agent completed successfully`, { id: agentId });
+            return 'finished';
+          }
+        } catch {
+          // Ignore parse errors for individual lines
+        }
+      }
+
+      // No result event found - check for error indicators
+      this.logger.debug(`No result event found in log`, { id: agentId, lineCount: lines.length });
+      return lines.length > 0 ? 'failed' : null;
+    } catch (error) {
+      this.logger.warn(`Error reading stdout log`, { id: agentId, error: (error as Error).message });
+      return null;
+    }
+  }
+
   private restoreAgents(): void {
     const savedAgents = this.store.listAgents();
+    this.logger.debug(`Restoring agents from store`, { count: savedAgents.length });
 
     for (const agentInfo of savedAgents) {
-      // Skip terminal states older than cleanup delay
+      // Include terminal state agents in memory map (for status display)
+      // Skip only very old terminal agents (older than 7 days)
       if (isTerminalState(agentInfo.status)) {
+        const finishedAt = agentInfo.finishedAt ? new Date(agentInfo.finishedAt) : null;
+        const daysSinceFinished = finishedAt
+          ? (Date.now() - finishedAt.getTime()) / (1000 * 60 * 60 * 24)
+          : 0;
+
+        if (daysSinceFinished > 7) {
+          this.logger.debug(`Skipping old terminal agent`, { id: agentInfo.id, status: agentInfo.status, daysSinceFinished });
+          continue;
+        }
+
+        // Add terminal agent to memory map for status display
+        this.logger.debug(`Restoring terminal agent`, { id: agentInfo.id, status: agentInfo.status });
+        const managedAgent = this.createManagedAgent(agentInfo);
+        this.agents.set(agentInfo.id, managedAgent);
+        continue;
+      }
+
+      // Check grace period for newly spawned agents (5 seconds)
+      const spawnedAt = agentInfo.spawnedAt ? new Date(agentInfo.spawnedAt) : null;
+      const gracePeriodMs = 5000;
+      const isWithinGracePeriod = spawnedAt && (Date.now() - spawnedAt.getTime()) < gracePeriodMs;
+
+      if (isWithinGracePeriod) {
+        this.logger.debug(`Agent within grace period, skipping process check`, {
+          id: agentInfo.id,
+          spawnedAt: spawnedAt?.toISOString(),
+          ageMs: spawnedAt ? Date.now() - spawnedAt.getTime() : null,
+        });
+        // Restore agent without process check
+        const managedAgent = this.createManagedAgent(agentInfo);
+        this.agents.set(agentInfo.id, managedAgent);
         continue;
       }
 
       // Check if process is still running
+      this.logger.debug(`Checking process for agent`, { id: agentInfo.id, pid: agentInfo.pid });
       if (agentInfo.pid && !isProcessRunning(agentInfo.pid)) {
-        this.logger.warn(`Agent process no longer running, marking as failed`, { id: agentInfo.id, pid: agentInfo.pid });
-        agentInfo.status = 'failed';
-        agentInfo.error = 'Process terminated unexpectedly';
-        agentInfo.finishedAt = new Date();
+        // Process not running - check stdout log to determine if it finished successfully
+        const completionStatus = this.checkAgentCompletionFromLog(agentInfo.id);
+
+        if (completionStatus === 'finished') {
+          this.logger.info(`Agent completed successfully (from log analysis)`, { id: agentInfo.id });
+          agentInfo.status = 'finished';
+          agentInfo.finishedAt = new Date();
+        } else {
+          this.logger.warn(`Agent process no longer running, marking as failed`, { id: agentInfo.id, pid: agentInfo.pid });
+          agentInfo.status = 'failed';
+          agentInfo.error = 'Process not found on restore';
+          agentInfo.finishedAt = new Date();
+        }
+
         this.store.saveAgent(agentInfo);
+        // Still add to memory map so getInfo can find it
+        const managedAgent = this.createManagedAgent(agentInfo);
+        this.agents.set(agentInfo.id, managedAgent);
         continue;
       }
 
       // Restore agent in memory (without process - can't reattach)
+      this.logger.debug(`Restoring agent in memory`, { id: agentInfo.id, status: agentInfo.status });
       const managedAgent = this.createManagedAgent(agentInfo);
       this.agents.set(agentInfo.id, managedAgent);
     }
+
+    this.logger.debug(`Restore complete`, { restoredCount: this.agents.size });
   }
 
   private createManagedAgent(info: AgentInfo): ManagedAgent {
@@ -170,12 +270,18 @@ export class AgentController {
     try {
       managedAgent.stateMachine.start();
       managedAgent.info.startedAt = new Date();
+      managedAgent.info.spawnedAt = new Date(); // Record spawn time for grace period checking
+
+      // Ensure logs directory exists and get stdout log path
+      this.ensureLogsDir();
+      const stdoutLogPath = this.getStdoutLogPath(id);
 
       const { process, pid } = spawnClaude({
         prompt: options.prompt,
         cwd: options.worktreePath,
         env: options.env,
         timeout: options.timeout || this.config.agent.defaultTimeout,
+        stdoutLogPath, // Pass log path for tee persistence
       }, this.config);
 
       managedAgent.process = process;
@@ -185,13 +291,20 @@ export class AgentController {
       // Transition to running
       managedAgent.stateMachine.run();
 
-      // Handle stdout
+      // Handle stdout (tee handles file persistence, we just parse here)
       if (process.stdout) {
+        this.logger.debug(`Setting up stdout handler`, { id, stdoutLogPath });
+
         process.stdout.on('data', (chunk: Buffer) => {
           const text = chunk.toString();
+          this.logger.debug(`Received stdout data`, { id, length: text.length, preview: text.slice(0, 100) });
+
           const events = managedAgent.parser.feed(text);
+          this.logger.debug(`Parsed events from stdout`, { id, eventCount: events.length });
           managedAgent.parsedEvents.push(...events);
         });
+      } else {
+        this.logger.warn(`Process has no stdout`, { id });
       }
 
       // Handle stderr
@@ -267,12 +380,19 @@ export class AgentController {
       throw new Error(`Agent '${id}' not found`);
     }
 
-    if (!managedAgent.process) {
-      throw new Error(`Agent '${id}' has no associated process`);
-    }
-
     if (isTerminalState(managedAgent.info.status)) {
       this.logger.warn(`Agent already in terminal state`, { id, status: managedAgent.info.status });
+      return;
+    }
+
+    if (!managedAgent.process) {
+      // Agent was restored without process, mark as failed directly
+      this.logger.warn(`Agent has no associated process, marking as failed`, { id });
+      managedAgent.info.status = 'failed';
+      managedAgent.info.error = 'Killed by user (no process attached)';
+      managedAgent.info.finishedAt = new Date();
+      managedAgent.stateMachine.fail();
+      this.store.saveAgent(managedAgent.info);
       return;
     }
 
