@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, statSync, unlinkSync, renameSync, mkdirSync } from 'node:fs';
+import { existsSync, readdirSync, statSync, unlinkSync, renameSync, mkdirSync, rmdirSync } from 'node:fs';
 import { join, basename, extname } from 'node:path';
 import { getMaestroDir, LOGS_DIR, loadConfig } from '../shared/config.js';
 import { getLogger } from '../shared/logger.js';
@@ -120,8 +120,7 @@ export class LogRotation {
           try {
             const contents = readdirSync(fullPath);
             if (contents.length === 0) {
-              const fs = require('node:fs');
-              fs.rmdirSync(fullPath);
+              rmdirSync(fullPath);
             }
           } catch {
             // Ignore errors

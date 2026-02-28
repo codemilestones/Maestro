@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from 'node:fs';
 import { SimpleGit } from 'simple-git';
 import {
   createGit,
@@ -82,7 +82,6 @@ export class WorktreeManager {
     const tempPath = `${filePath}.tmp`;
     writeFileSync(tempPath, JSON.stringify(state, null, 2), 'utf-8');
 
-    const { renameSync } = require('node:fs');
     renameSync(tempPath, filePath);
   }
 
