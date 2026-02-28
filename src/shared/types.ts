@@ -31,6 +31,7 @@ export interface AgentInfo {
   exitCode?: number;
   error?: string;
   metrics: AgentMetrics;
+  archived?: boolean; // When true, agent is hidden from main list but data is preserved
 }
 
 // Worktree Status

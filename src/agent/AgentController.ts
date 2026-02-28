@@ -431,12 +431,84 @@ export class AgentController {
   }
 
   listAll(): AgentInfo[] {
-    return Array.from(this.agents.values()).map((a) => a.info);
+    return Array.from(this.agents.values())
+      .filter((a) => !a.info.archived)
+      .map((a) => a.info);
+  }
+
+  archive(id: string): void {
+    const managedAgent = this.agents.get(id);
+    if (!managedAgent) {
+      this.logger.debug(`Agent not found for archive`, { id });
+      return;
+    }
+
+    if (!isTerminalState(managedAgent.info.status)) {
+      this.logger.warn(`Cannot archive non-terminal agent`, { id, status: managedAgent.info.status });
+      return;
+    }
+
+    managedAgent.info.archived = true;
+    this.store.saveAgent(managedAgent.info);
+    this.logger.info(`Agent archived`, { id });
   }
 
   getOutput(id: string): string[] {
     const managedAgent = this.agents.get(id);
-    return managedAgent?.outputBuffer || [];
+    if (!managedAgent) return [];
+
+    // If outputBuffer is empty and agent is in terminal state, try loading from log file
+    if (managedAgent.outputBuffer.length === 0 && isTerminalState(managedAgent.info.status)) {
+      const loadedOutput = this.loadOutputFromLog(id);
+      if (loadedOutput.length > 0) {
+        managedAgent.outputBuffer = loadedOutput;
+      }
+    }
+
+    return managedAgent.outputBuffer;
+  }
+
+  /** Load output from persisted stdout log file */
+  private loadOutputFromLog(agentId: string): string[] {
+    const logPath = this.getStdoutLogPath(agentId);
+    if (!existsSync(logPath)) {
+      this.logger.debug(`No stdout log found for loading output`, { id: agentId });
+      return [];
+    }
+
+    try {
+      const content = readFileSync(logPath, 'utf-8');
+      const lines = content.trim().split('\n').filter(Boolean);
+      const output: string[] = [];
+
+      for (const line of lines) {
+        try {
+          const event = JSON.parse(line);
+          // Extract message content from assistant events
+          if (event.type === 'assistant' && event.message?.content) {
+            const messageContent = event.message.content;
+            if (Array.isArray(messageContent)) {
+              for (const block of messageContent) {
+                if (block.type === 'text' && block.text) {
+                  output.push(block.text);
+                }
+              }
+            } else if (typeof messageContent === 'string') {
+              output.push(messageContent);
+            }
+          }
+        } catch {
+          // Ignore parse errors for individual lines
+        }
+      }
+
+      this.logger.debug(`Loaded output from log file`, { id: agentId, lineCount: output.length });
+      // Return only the last 100 lines to limit memory usage
+      return output.slice(-100);
+    } catch (error) {
+      this.logger.warn(`Error loading output from log`, { id: agentId, error: (error as Error).message });
+      return [];
+    }
   }
 
   getOutputStream(id: string): Readable | null {

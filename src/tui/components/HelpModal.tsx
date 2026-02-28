@@ -29,7 +29,9 @@ export function HelpModal({ onClose }: HelpModalProps) {
 
         <Box flexDirection="column">
           <Text bold>Actions</Text>
+          <Text>  <Text color="yellow">n</Text>       Create new agent</Text>
           <Text>  <Text color="yellow">x</Text>       Kill selected agent</Text>
+          <Text>  <Text color="yellow">a</Text>       Archive selected agent</Text>
           <Text>  <Text color="yellow">r</Text>       Refresh status</Text>
         </Box>
 

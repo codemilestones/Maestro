@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { Box, Text, useApp } from 'ink';
 import { AgentController } from '../agent/AgentController.js';
+import { isTerminalState } from '../agent/state/state.js';
 import { WorktreeManager } from '../worktree/WorktreeManager.js';
 import { generateTaskId } from '../shared/id.js';
 import { loadConfig } from '../shared/config.js';
@@ -115,6 +116,14 @@ export function App({ projectRoot }: AppProps) {
       n: () => {
         if (viewMode === 'list') {
           setViewMode('new_agent');
+        }
+      },
+
+      // Archive agent (a key)
+      a: () => {
+        if (viewMode === 'list' && selectedAgent && isTerminalState(selectedAgent.status)) {
+          controller.archive(selectedAgent.id);
+          refresh();
         }
       },
     }),

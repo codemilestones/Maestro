@@ -1,43 +1,4 @@
-## ADDED Requirements
-
-### Requirement: 主界面布局
-系统 SHALL 提供三区域布局的 TUI 主界面。
-
-#### Scenario: 界面渲染
-- **WHEN** 用户执行 `maestro attach`
-- **THEN** 显示包含 Agent 列表区、预览区、状态栏的三区域界面
-
-#### Scenario: 标题栏显示
-- **WHEN** TUI 界面启动
-- **THEN** 顶部显示版本信息和帮助/退出提示
-
-### Requirement: Agent 列表展示
-系统 SHALL 在列表区显示所有 Agent 的状态信息。
-
-#### Scenario: 列表项信息
-- **WHEN** Agent 列表区渲染
-- **THEN** 每行显示序号、状态图标、分支名、状态文字、任务摘要、运行时长
-
-#### Scenario: 状态图标
-- **WHEN** Agent 状态为 running
-- **THEN** 显示 ● 图标
-- **WHEN** Agent 状态为 waiting_input
-- **THEN** 显示 ◐ 图标
-- **WHEN** Agent 状态为 finished
-- **THEN** 显示 ✓ 图标
-- **WHEN** Agent 状态为 failed
-- **THEN** 显示 ✗ 图标
-
-### Requirement: 预览区实时输出
-系统 SHALL 在预览区显示选中 Agent 的实时输出。
-
-#### Scenario: 输出更新
-- **WHEN** 选中的 Agent 产生新输出
-- **THEN** 预览区实时追加显示新内容
-
-#### Scenario: 输出限制
-- **WHEN** 输出超过预览区容量
-- **THEN** 自动滚动显示最新内容，保留最近 N 行
+## MODIFIED Requirements
 
 ### Requirement: 键盘快捷键
 系统 SHALL 支持通过键盘快捷键操作界面。
@@ -54,9 +15,17 @@
 - **WHEN** 用户在全屏会话模式按下 Esc
 - **THEN** 返回列表视图
 
-#### Scenario: k 键终止
-- **WHEN** 用户按下 k 键
-- **THEN** 终止选中的 Agent（需二次确认）
+#### Scenario: x 键终止选中 Agent
+- **WHEN** 用户在列表视图按下 x 键且有选中的 Agent
+- **THEN** 调用 controller.kill() 终止选中的 Agent，界面保持在列表视图
+
+#### Scenario: x 键无 Agent 时无操作
+- **WHEN** 用户按下 x 键但无选中的 Agent
+- **THEN** 无任何操作，界面保持不变
+
+#### Scenario: a 键归档选中 Agent
+- **WHEN** 用户在列表视图按下 a 键且有选中的终止状态 Agent
+- **THEN** 调用 controller.archive() 归档选中的 Agent，列表刷新
 
 #### Scenario: p 键创建 PR
 - **WHEN** 用户按下 p 键
@@ -68,34 +37,78 @@
 
 #### Scenario: q 键退出
 - **WHEN** 用户按下 q 键
-- **THEN** 退出 TUI 界面（Agent 继续后台运行）
+- **THEN** 退出 TUI 界面，Agent 状态保留，Agent 进程继续后台运行
 
 #### Scenario: ? 键帮助
 - **WHEN** 用户按下 ? 键
-- **THEN** 显示帮助弹窗，列出所有快捷键
+- **THEN** 显示帮助弹窗，列出所有快捷键（包括 a 键归档）
 
-### Requirement: 全屏会话模式
-系统 SHALL 支持进入单个 Agent 的全屏交互模式。
+### Requirement: 预览区实时输出
+系统 SHALL 在预览区显示选中 Agent 的实时输出。
 
-#### Scenario: 进入全屏
-- **WHEN** 用户对选中 Agent 按 Enter 或使用 `attach --agent`
-- **THEN** 界面切换为该 Agent 的全屏输出，stdin 透传到 Agent 进程
+#### Scenario: 输出更新
+- **WHEN** 选中的 Agent 产生新输出
+- **THEN** 预览区实时追加显示新内容
 
-#### Scenario: 退出全屏
-- **WHEN** 用户按下 Esc 或 Ctrl+A,D
-- **THEN** 返回主列表视图
+#### Scenario: 输出限制
+- **WHEN** 输出超过预览区容量
+- **THEN** 自动滚动显示最新内容，保留最近 100 行
 
-#### Scenario: 全屏中响应输入
-- **WHEN** Agent 处于 waiting_input 且用户输入文本按 Enter
-- **THEN** 输入发送到 Agent 进程
+#### Scenario: 无输出时显示等待
+- **WHEN** 选中的 Agent 尚无输出且状态为 running/starting/pending/waiting_input
+- **THEN** 预览区显示 "Waiting for output..." 提示
 
-### Requirement: 状态栏
-系统 SHALL 在底部显示状态栏。
+#### Scenario: 有输出时停止等待提示
+- **WHEN** Agent 产生首次输出
+- **THEN** 立即替换 "Waiting for output..." 显示实际内容
 
-#### Scenario: 显示统计
-- **WHEN** 状态栏渲染
-- **THEN** 显示总 Agent 数、运行中数量、等待输入数量
+#### Scenario: 已完成 Agent 显示历史输出
+- **WHEN** 选中的 Agent 状态为 finished 或 failed
+- **THEN** 从持久化日志加载并显示历史输出内容
 
-#### Scenario: 显示快捷键提示
-- **WHEN** 状态栏渲染
-- **THEN** 显示常用快捷键提示
+#### Scenario: 已完成 Agent 无历史日志
+- **WHEN** 选中已完成的 Agent 但日志文件不存在或为空
+- **THEN** 预览区显示 "No output available" 提示
+
+## ADDED Requirements
+
+### Requirement: a 键归档 Agent
+系统 SHALL 支持通过 a 键归档选中的 Agent。
+
+#### Scenario: a 键归档终止状态 Agent
+- **WHEN** 用户在列表视图按下 a 键且选中的 Agent 状态为 finished 或 failed
+- **THEN** 调用 controller.archive() 归档选中的 Agent，列表立即刷新
+
+#### Scenario: a 键忽略运行中 Agent
+- **WHEN** 用户在列表视图按下 a 键且选中的 Agent 状态为 running/starting/waiting_input/pending
+- **THEN** 无任何操作，Agent 保持不变
+
+#### Scenario: a 键无选中时无操作
+- **WHEN** 用户按下 a 键但无选中的 Agent
+- **THEN** 无任何操作
+
+### Requirement: TUI 退出状态保留
+系统 SHALL 在 TUI 退出时保留所有 Agent 状态。
+
+#### Scenario: q 键退出后状态保留
+- **WHEN** 用户按 q 键退出 TUI
+- **THEN** 所有 Agent 的状态保持在 `.maestro/state/agents.json` 中不变
+
+#### Scenario: Ctrl+C 退出后状态保留
+- **WHEN** 用户按 Ctrl+C 强制退出 TUI
+- **THEN** 所有 Agent 的状态保持不变
+
+#### Scenario: 重新进入 TUI 恢复状态
+- **WHEN** 用户退出后再次运行 `maestro attach`
+- **THEN** 看到之前所有的 Agent，包括运行中和已完成的
+
+### Requirement: Agent 列表点击支持
+系统 SHALL 支持鼠标点击选择 Agent（如果终端支持）。
+
+#### Scenario: 点击 Agent 行
+- **WHEN** 用户鼠标点击 Agent 列表中的某一行
+- **THEN** 该 Agent 被选中，预览区显示其输出
+
+#### Scenario: 双击 Agent 行
+- **WHEN** 用户鼠标双击 Agent 列表中的某一行
+- **THEN** 进入该 Agent 的全屏会话模式
