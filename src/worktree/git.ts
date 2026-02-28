@@ -107,24 +107,35 @@ export async function getCurrentBranch(git: SimpleGit): Promise<string> {
 }
 
 export async function getDefaultBranch(git: SimpleGit): Promise<string> {
+  // 1. Try to get the default branch from remote
   try {
-    // Try to get the default branch from remote
     const remoteInfo = await git.raw(['remote', 'show', 'origin']);
     const match = remoteInfo.match(/HEAD branch: (.+)/);
     if (match) {
       return match[1].trim();
     }
   } catch {
-    // Fallback to checking common names
+    // Continue to fallback logic
   }
 
-  // Check for common default branch names
-  for (const name of ['main', 'master']) {
+  // 2. Check for common default branch names
+  for (const name of ['main', 'master', 'develop']) {
     if (await branchExists(git, name)) {
       return name;
     }
   }
 
+  // 3. Use current branch as fallback
+  try {
+    const currentBranch = await getCurrentBranch(git);
+    if (currentBranch && currentBranch !== 'HEAD') {
+      return currentBranch;
+    }
+  } catch {
+    // Continue to final fallback
+  }
+
+  // 4. Final fallback
   return 'main';
 }
 

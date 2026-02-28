@@ -7,6 +7,15 @@
 - **WHEN** 用户在项目根目录执行 `maestro init`
 - **THEN** 系统创建 `.maestro/` 目录，包含默认配置文件 `config.yaml`
 
+#### Scenario: 自动检测默认分支
+- **WHEN** 执行 `maestro init`
+- **THEN** 系统自动检测 Git 仓库的默认分支（main/master）
+- **AND** 将检测到的分支写入配置文件的 `worktree.defaultBase` 和 `pr.defaultBase`
+
+#### Scenario: 显示检测结果
+- **WHEN** 初始化完成
+- **THEN** 显示检测到的默认分支名称
+
 #### Scenario: 重复初始化
 - **WHEN** 用户在已初始化的目录执行 `maestro init`
 - **THEN** 系统提示配置已存在，除非使用 `--force` 标志

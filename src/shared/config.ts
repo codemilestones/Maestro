@@ -1,6 +1,7 @@
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse, stringify } from 'yaml';
+import { createGit, getDefaultBranch } from '../worktree/git.js';
 
 export interface MaestroConfig {
   worktree: {
@@ -99,7 +100,12 @@ export function saveConfig(config: MaestroConfig, projectRoot?: string): void {
   writeFileSync(configPath, stringify(config), 'utf-8');
 }
 
-export function initMaestroDir(projectRoot?: string): void {
+export async function detectDefaultBranch(projectRoot?: string): Promise<string> {
+  const git = createGit(projectRoot);
+  return getDefaultBranch(git);
+}
+
+export function initMaestroDir(projectRoot?: string, detectedBranch?: string): void {
   const maestroDir = getMaestroDir(projectRoot);
 
   // Create directory structure
@@ -119,7 +125,13 @@ export function initMaestroDir(projectRoot?: string): void {
   // Create default config if not exists
   const configPath = getConfigPath(projectRoot);
   if (!existsSync(configPath)) {
-    saveConfig(DEFAULT_CONFIG, projectRoot);
+    // Use detected branch if provided, otherwise use default
+    const config = { ...DEFAULT_CONFIG };
+    if (detectedBranch) {
+      config.worktree = { ...config.worktree, defaultBase: detectedBranch };
+      config.pr = { ...config.pr, defaultBase: detectedBranch };
+    }
+    saveConfig(config, projectRoot);
   }
 }
 

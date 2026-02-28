@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
-import { initMaestroDir, isMaestroInitialized, getMaestroDir } from '../../shared/config.js';
+import { initMaestroDir, isMaestroInitialized, getMaestroDir, detectDefaultBranch } from '../../shared/config.js';
 import { isGitRepository } from '../../worktree/git.js';
 
 export const initCommand = new Command('init')
@@ -23,7 +23,12 @@ export const initCommand = new Command('init')
     }
 
     try {
-      initMaestroDir();
+      // Detect default branch
+      const detectedBranch = await detectDefaultBranch(cwd);
+
+      // Initialize with detected branch
+      initMaestroDir(cwd, detectedBranch);
+
       console.log(chalk.green('✓ Maestro initialized successfully!'));
       console.log();
       console.log('Created:');
@@ -32,6 +37,8 @@ export const initCommand = new Command('init')
       console.log(chalk.gray('  ├── state/'));
       console.log(chalk.gray('  ├── logs/'));
       console.log(chalk.gray('  └── templates/'));
+      console.log();
+      console.log(`Detected default branch: ${chalk.cyan(detectedBranch)}`);
       console.log();
       console.log(`Next steps:`);
       console.log(chalk.cyan(`  maestro spawn "Your task description"`));

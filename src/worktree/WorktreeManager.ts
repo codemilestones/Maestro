@@ -56,14 +56,16 @@ export class WorktreeManager {
     const filePath = this.getWorktreesFilePath();
 
     if (!existsSync(filePath)) {
+      // No state file yet - this is normal for new projects
       return { version: STATE_VERSION, worktrees: {} };
     }
 
     try {
       const content = readFileSync(filePath, 'utf-8');
       return JSON.parse(content) as WorktreesState;
-    } catch {
-      this.logger.warn('Failed to load worktrees state, using empty state');
+    } catch (error) {
+      // Only warn if file exists but is corrupted
+      this.logger.debug('Failed to parse worktrees state, using empty state', { error });
       return { version: STATE_VERSION, worktrees: {} };
     }
   }
@@ -103,8 +105,17 @@ export class WorktreeManager {
 
   async create(options: CreateWorktreeOptions): Promise<WorktreeInfo> {
     const id = options.taskId || generateWorktreeId();
-    const baseBranch = options.base || this.config.worktree.defaultBase || (await getDefaultBranch(this.git));
     const branch = this.normalizeBranch(options.branch);
+
+    // Determine base branch with fallback logic
+    let baseBranch = options.base || this.config.worktree.defaultBase;
+
+    // Validate that the base branch exists, with fallback to auto-detection
+    if (!(await branchExists(this.git, baseBranch))) {
+      const detectedBranch = await getDefaultBranch(this.git);
+      this.logger.debug(`Configured base branch '${baseBranch}' not found, using detected branch '${detectedBranch}'`);
+      baseBranch = detectedBranch;
+    }
 
     // Check if branch already exists
     if (await branchExists(this.git, branch)) {
@@ -227,16 +238,26 @@ export class WorktreeManager {
   }
 
   async sync(): Promise<void> {
-    // Sync state with actual git worktrees
+    // Load state - if no worktrees exist, silently return
     const state = this.loadState();
+
+    // If no worktrees are tracked, nothing to sync
+    if (Object.keys(state.worktrees).length === 0) {
+      return;
+    }
+
+    // Sync state with actual git worktrees
     const actualWorktrees = await worktreeList(this.git);
     const actualPaths = new Set(actualWorktrees.map((w) => w.worktree));
+
+    let hasChanges = false;
 
     // Mark worktrees that no longer exist as deleted
     for (const [id, worktree] of Object.entries(state.worktrees)) {
       if (worktree.status === 'active' && !actualPaths.has(worktree.path)) {
-        this.logger.warn(`Worktree no longer exists, marking as deleted`, { id, path: worktree.path });
+        this.logger.debug(`Worktree no longer exists, marking as deleted`, { id, path: worktree.path });
         worktree.status = 'deleted';
+        hasChanges = true;
       }
     }
 
@@ -244,10 +265,14 @@ export class WorktreeManager {
     for (const id of Object.keys(state.worktrees)) {
       if (state.worktrees[id].status === 'deleted') {
         delete state.worktrees[id];
+        hasChanges = true;
       }
     }
 
-    this.saveState(state);
+    // Only save if there were changes
+    if (hasChanges) {
+      this.saveState(state);
+    }
   }
 
   async cleanup(options: { dryRun?: boolean } = {}): Promise<string[]> {
