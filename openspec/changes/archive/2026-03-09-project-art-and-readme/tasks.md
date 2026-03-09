@@ -2,7 +2,7 @@
 
 - [x] 1.1 Create `docs/images/` directory
 - [x] 1.2 Write image generation prompt for the concept art (human conductor + crawfish orchestra)
-- [ ] 1.3 (User) Generate concept art image and save as `docs/images/maestro-concept.png`
+- [x] 1.3 (User) Generate concept art image and save as `docs/images/maestro-concept.png`
 
 ## 2. English README
 
