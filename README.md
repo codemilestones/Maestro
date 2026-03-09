@@ -1,183 +1,119 @@
-# Maestro CLI
+<p align="center">
+  <img src="docs/images/maestro-logo.png" alt="Maestro Logo" width="120">
+</p>
 
-多 Agent 编排 CLI 工具，用于管理多个 Claude Code 实例并行工作。
+<h1 align="center">Maestro CLI</h1>
 
-## 概述
+<p align="center">
+  <img src="docs/images/maestro-concept.png" alt="Maestro - A human conductor directing a crawfish orchestra" width="600">
+</p>
 
-Maestro 采用 Human-to-Agents 的辐射式（Hub-Spoke）协作模型，一个人类开发者作为中心节点，同时指挥多个 Claude Code Agent。每个 Agent 在独立的 Git Worktree 中工作，确保物理隔离，避免代码冲突。
+<p align="center">
+  Multi-Agent orchestration CLI for Claude Code — one human, many agents, working in harmony.
+</p>
 
-### 核心特性
+<p align="center">
+  <a href="README_CN.md">中文文档</a>
+</p>
 
-- **Git Worktree 隔离**：每个 Agent 在独立的 worktree 中工作
-- **Human-in-the-Loop**：人类保持对所有 Agent 的控制
-- **TUI 界面**：类似 tmux 的多窗口管理界面
-- **PR 自动化**：自动生成包含架构契约的 PR
+## Overview
 
-## 安装
+Maestro implements a **Human-to-Agents hub-spoke collaboration model**, where a single developer acts as the central conductor, orchestrating multiple Claude Code agents working in parallel. Each agent operates in an isolated Git Worktree, preventing code conflicts and enabling true concurrent development.
+
+## Core Features
+
+- **Git Worktree Isolation** — Each agent works in its own worktree, ensuring physical code separation
+- **Human-in-the-Loop** — The developer maintains full control over all agents at all times
+- **TUI Interface** — A tmux-like multi-window terminal UI for real-time agent management
+- **PR Automation** — Auto-generated pull requests with architecture contract analysis
+- **State Recovery** — Crash-resilient state persistence with automatic recovery
+- **Agent Lifecycle** — Full state machine (pending → running → finished/failed) with retry support
+
+## Quick Start
+
+### Installation
 
 ```bash
-# 使用 npm
+# Via npm
 npm install -g maestro-cli
 
-# 或者从源码构建
+# Or build from source
 git clone <repo>
-cd maestro
+cd Maestro
 npm install
 npm run build
 npm link
 ```
 
-## 快速开始
-
-### 1. 初始化项目
+### 1. Initialize
 
 ```bash
 cd your-project
 maestro init
 ```
 
-这将创建 `.maestro/` 目录，包含配置文件和状态存储。
+This creates a `.maestro/` directory with configuration and state storage.
 
-### 2. 启动 Agent
-
-```bash
-# 基本用法
-maestro spawn -p "实现用户登录功能"
-
-# 指定分支名
-maestro spawn -p "修复 #123 bug" -b fix-123
-
-# 在后台运行
-maestro spawn -p "添加单元测试" --background
-```
-
-### 3. 查看状态
+### 2. Create an Agent
 
 ```bash
-# 查看所有 Agent 状态
-maestro status
+# Basic usage
+maestro new -p "Implement user login"
 
-# 实时监控
-maestro status --watch
+# With a custom branch name
+maestro new -p "Fix bug #123" -b fix-123
 
-# JSON 格式输出
-maestro status --json
+# Continue a finished agent with a new prompt
+maestro continue <agent-id> -p "Now add unit tests"
 ```
 
-### 4. 进入 TUI 界面
+### 3. Check Status
+
+```bash
+maestro status            # View all agents
+maestro status --watch    # Real-time monitoring
+maestro status --json     # JSON output
+```
+
+### 4. Enter TUI
 
 ```bash
 maestro attach
 ```
 
-### 5. 查看日志
+**TUI Keyboard Shortcuts:**
+
+| Key | Action |
+|-----|--------|
+| `↑/↓` or `j/k` | Navigate agents |
+| `1-9` | Select agent by number |
+| `Enter` | Enter fullscreen session |
+| `Esc` | Exit fullscreen / close popup |
+| `x` | Kill selected agent |
+| `r` | Refresh status |
+| `?` | Show help |
+| `q` | Quit TUI |
+
+### 5. View Logs
 
 ```bash
-# 查看指定 Agent 的日志
-maestro logs <agent-id>
-
-# 实时跟踪
-maestro logs <agent-id> --follow
-
-# 显示最后 100 行
-maestro logs <agent-id> --tail 100
+maestro logs <agent-id>             # View agent logs
+maestro logs <agent-id> --follow    # Stream in real-time
+maestro logs <agent-id> --tail 100  # Last 100 lines
 ```
 
-### 6. 管理 Agent
+### 6. Manage Agents
 
 ```bash
-# 终止 Agent
-maestro kill <agent-id>
-
-# 清理已完成的 worktree
-maestro cleanup
-
-# 预览清理（不实际执行）
-maestro cleanup --dry-run
+maestro kill <agent-id>       # Terminate an agent
+maestro cleanup               # Clean up completed worktrees
+maestro cleanup --dry-run     # Preview cleanup
+maestro pr <agent-id>         # Create PR for completed agent
 ```
 
-## TUI 操作指南
+## Architecture
 
-进入 TUI 后的快捷键：
-
-| 快捷键 | 功能 |
-|--------|------|
-| `↑/↓` 或 `j/k` | 上下选择 Agent |
-| `1-9` | 按编号选择 Agent |
-| `Enter` | 进入选中 Agent 的全屏会话 |
-| `Esc` | 退出全屏会话 / 关闭弹窗 |
-| `x` | 终止选中的 Agent |
-| `r` | 刷新状态 |
-| `?` | 显示帮助 |
-| `q` | 退出 TUI |
-
-> **注意**: 创建新 Agent、创建 PR、查看日志等操作请使用对应的 CLI 命令 (`maestro spawn`, `maestro pr`, `maestro logs`)。
-
-## 配置
-
-配置文件位于 `.maestro/config.yaml`：
-
-```yaml
-# Worktree 配置
-worktree:
-  baseDir: ./worktrees          # Worktree 存放目录
-  defaultBase: main             # 默认基础分支
-  branchPrefix: maestro/        # 分支前缀
-  autoCleanup: true             # 自动清理已完成的 worktree
-  cleanupDelay: 3600            # 清理延迟（秒）
-
-# Agent 配置
-agent:
-  maxConcurrent: 5              # 最大并发 Agent 数
-  defaultTimeout: 1800000       # 默认超时（毫秒）
-  claudePath: claude            # Claude CLI 路径
-  skipPermissions: false        # 是否跳过权限确认
-  autoRetry: true               # 失败时自动重试
-  maxRetries: 2                 # 最大重试次数
-
-# PR 配置
-pr:
-  template: default             # PR 模板名称
-  defaultBase: main             # PR 目标分支
-  draft: false                  # 是否创建草稿 PR
-  autoLabels: true              # 自动添加标签
-  labelMapping:                 # 类型到标签的映射
-    feat: enhancement
-    fix: bug
-    docs: documentation
-  contractAnalysis: true        # 启用架构契约分析
-```
-
-### 配置命令
-
-```bash
-# 获取配置值
-maestro config --get agent.maxConcurrent
-
-# 设置配置值
-maestro config --set agent.maxConcurrent 10
-
-# 查看所有配置
-maestro config --list
-```
-
-## 架构
-
-```
-.maestro/
-├── config.yaml      # 配置文件
-├── state/
-│   ├── agents.json  # Agent 状态
-│   └── worktrees.json # Worktree 状态
-├── logs/
-│   └── <agent-id>/  # Agent 日志
-└── templates/
-    └── pr-template.md # 自定义 PR 模板
-```
-
-## 状态机
-
-Agent 的状态转换：
+### Agent State Machine
 
 ```
 pending → starting → running ⇄ waiting_input
@@ -185,96 +121,77 @@ pending → starting → running ⇄ waiting_input
             finished / failed
 ```
 
-- `pending`: 等待启动
-- `starting`: 正在启动
-- `running`: 正在执行
-- `waiting_input`: 等待用户输入
-- `finished`: 成功完成
-- `failed`: 执行失败
-
-## PR 自动化
-
-Maestro 可以自动创建包含架构契约的 PR：
-
-```bash
-# Agent 完成后自动创建 PR（在 TUI 中操作）
-
-# 或手动触发
-maestro pr <agent-id>
-```
-
-PR 内容包含：
-- 变更概述
-- 修改的核心接口
-- 新增的依赖
-- 修改的文件列表
-- Agent 执行摘要
-
-## 状态恢复
-
-Maestro 支持在意外退出后恢复状态：
-
-```bash
-# 检查和恢复状态
-maestro recover
-
-# 同时清理旧状态
-maestro recover --cleanup
-
-# 验证状态一致性
-maestro recover --validate
-
-# 执行日志维护
-maestro recover --logs
-```
-
-## 开发
-
-```bash
-# 安装依赖
-npm install
-
-# 开发模式
-npm run dev
-
-# 构建
-npm run build
-
-# 运行测试
-npm test
-
-# 代码检查
-npm run lint
-```
-
-## 目录结构
+### Project Structure
 
 ```
 src/
-├── cli/           # CLI 命令
-│   ├── commands/  # 各子命令实现
-│   └── index.ts   # 入口
-├── worktree/      # Worktree 管理
-├── agent/         # Agent 控制
-│   ├── process/   # 进程管理
-│   ├── output/    # 输出解析
-│   └── state/     # 状态管理
-├── tui/           # TUI 界面
-│   ├── components/# React 组件
-│   └── hooks/     # React Hooks
-├── pr/            # PR 自动化
-│   ├── analyzers/ # 变更分析器
-│   └── templates/ # PR 模板
-├── state/         # 状态持久化
-└── shared/        # 共享模块
+├── cli/           # CLI commands
+│   ├── commands/  # Subcommand implementations
+│   └── index.ts   # Entry point
+├── agent/         # Agent control
+│   ├── process/   # Process management
+│   ├── output/    # Output parsing
+│   └── state/     # State management
+├── worktree/      # Git worktree management
+├── tui/           # Terminal UI (React + Ink)
+│   ├── components/
+│   └── hooks/
+├── pr/            # PR automation
+│   ├── analyzers/ # Change analyzers
+│   └── templates/ # PR templates
+├── state/         # State persistence
+└── shared/        # Shared utilities
 ```
 
-## 注意事项
+### Runtime Directory
 
-1. **Git 仓库要求**：项目必须是一个 Git 仓库
-2. **Claude CLI**：需要预先安装并配置 Claude CLI
-3. **权限**：首次运行时 Claude 可能需要确认权限
-4. **并发限制**：建议不超过 5 个并发 Agent
+```
+.maestro/
+├── config.yaml       # Configuration
+├── state/
+│   ├── agents.json   # Agent states
+│   └── worktrees.json
+├── logs/
+│   └── <agent-id>/   # Per-agent logs
+└── templates/
+    └── pr-template.md
+```
+
+## Configuration
+
+Configuration lives in `.maestro/config.yaml`:
+
+```bash
+maestro config --list                        # View all
+maestro config --get agent.maxConcurrent     # Get a value
+maestro config --set agent.maxConcurrent 10  # Set a value
+```
+
+Key settings:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `worktree.defaultBase` | `main` | Default base branch |
+| `agent.maxConcurrent` | `5` | Max parallel agents |
+| `agent.defaultTimeout` | `1800000` | Agent timeout (ms) |
+| `pr.draft` | `false` | Create draft PRs |
+| `pr.contractAnalysis` | `true` | Architecture analysis in PRs |
+
+## Requirements
+
+- **Node.js** >= 18.0.0
+- **Git** repository
+- **Claude CLI** installed and configured
+
+## Development
+
+```bash
+npm install          # Install dependencies
+npm run dev          # Watch mode
+npm run build        # Build
+npm test             # Run tests
+npm run lint         # Lint check
+```
 
 ## License
 
