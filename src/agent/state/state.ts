@@ -6,8 +6,8 @@ const VALID_TRANSITIONS: Record<AgentStatus, AgentStatus[]> = {
   starting: ['running', 'failed'],
   running: ['waiting_input', 'finished', 'failed'],
   waiting_input: ['running', 'finished', 'failed'],
-  finished: [],
-  failed: [],
+  finished: ['starting'], // Allow resume from finished state
+  failed: ['starting'], // Allow resume from failed state
 };
 
 export function canTransition(from: AgentStatus, to: AgentStatus): boolean {

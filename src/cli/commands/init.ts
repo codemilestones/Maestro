@@ -41,7 +41,7 @@ export const initCommand = new Command('init')
       console.log(`Detected default branch: ${chalk.cyan(detectedBranch)}`);
       console.log();
       console.log(`Next steps:`);
-      console.log(chalk.cyan(`  maestro spawn "Your task description"`));
+      console.log(chalk.cyan(`  maestro new "Your task description"`));
     } catch (error) {
       console.error(chalk.red(`Error initializing Maestro: ${error instanceof Error ? error.message : error}`));
       process.exit(1);

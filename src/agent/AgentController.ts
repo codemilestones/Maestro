@@ -1,12 +1,12 @@
-import { type ExecaChildProcess } from './process/spawner.js';
+import { type ExecaChildProcess } from './process/launcher.js';
 import { Readable } from 'node:stream';
 import { existsSync, readFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { AgentInfo, AgentStatus, AgentMetrics, AgentSpawnOptions, AgentEvent, AgentEventHandler } from '../shared/types.js';
+import { AgentInfo, AgentStatus, AgentMetrics, AgentCreateOptions, AgentEvent, AgentEventHandler } from '../shared/types.js';
 import { generateAgentId } from '../shared/id.js';
 import { loadConfig, MaestroConfig } from '../shared/config.js';
 import { getLogger, createAgentLogger, Logger } from '../shared/logger.js';
-import { spawnClaude, killProcess, sendInput as sendProcessInput, isProcessRunning } from './process/spawner.js';
+import { launchClaude, killProcess, sendInput as sendProcessInput, isProcessRunning } from './process/launcher.js';
 import { OutputParser, ParsedEvent, extractFilesFromToolCalls } from './output/parser.js';
 import { AgentStateMachine, isTerminalState, isRunningState } from './state/state.js';
 import { AgentStore } from './state/store.js';
@@ -113,16 +113,16 @@ export class AgentController {
         continue;
       }
 
-      // Check grace period for newly spawned agents (5 seconds)
-      const spawnedAt = agentInfo.spawnedAt ? new Date(agentInfo.spawnedAt) : null;
+      // Check grace period for newly launched agents (5 seconds)
+      const launchedAt = agentInfo.launchedAt ? new Date(agentInfo.launchedAt) : null;
       const gracePeriodMs = 5000;
-      const isWithinGracePeriod = spawnedAt && (Date.now() - spawnedAt.getTime()) < gracePeriodMs;
+      const isWithinGracePeriod = launchedAt && (Date.now() - launchedAt.getTime()) < gracePeriodMs;
 
       if (isWithinGracePeriod) {
         this.logger.debug(`Agent within grace period, skipping process check`, {
           id: agentInfo.id,
-          spawnedAt: spawnedAt?.toISOString(),
-          ageMs: spawnedAt ? Date.now() - spawnedAt.getTime() : null,
+          launchedAt: launchedAt?.toISOString(),
+          ageMs: launchedAt ? Date.now() - launchedAt.getTime() : null,
         });
         // Restore agent without process check
         const managedAgent = this.createManagedAgent(agentInfo);
@@ -190,6 +190,14 @@ export class AgentController {
           this.emitEvent({ type: 'input_request', agentId: info.id, timestamp: new Date() });
         }
       },
+      onSessionInit: (sessionId) => {
+        const agent = this.agents.get(info.id);
+        if (agent) {
+          agent.info.sessionId = sessionId;
+          this.store.saveAgent(agent.info);
+          agentLogger.debug(`Session ID captured: ${sessionId}`);
+        }
+      },
       onError: (error) => {
         agentLogger.error(`Parser error: ${error.message}`);
       },
@@ -222,7 +230,7 @@ export class AgentController {
     };
   }
 
-  async spawn(options: AgentSpawnOptions): Promise<AgentInfo> {
+  async create(options: AgentCreateOptions): Promise<AgentInfo> {
     const id = generateAgentId();
 
     // Create initial agent info
@@ -261,7 +269,7 @@ export class AgentController {
     return info;
   }
 
-  private async startAgent(id: string, options: AgentSpawnOptions): Promise<void> {
+  private async startAgent(id: string, options: AgentCreateOptions): Promise<void> {
     const managedAgent = this.agents.get(id);
     if (!managedAgent) {
       throw new Error(`Agent '${id}' not found`);
@@ -270,18 +278,19 @@ export class AgentController {
     try {
       managedAgent.stateMachine.start();
       managedAgent.info.startedAt = new Date();
-      managedAgent.info.spawnedAt = new Date(); // Record spawn time for grace period checking
+      managedAgent.info.launchedAt = new Date(); // Record launch time for grace period checking
 
       // Ensure logs directory exists and get stdout log path
       this.ensureLogsDir();
       const stdoutLogPath = this.getStdoutLogPath(id);
 
-      const { process, pid } = spawnClaude({
+      const { process, pid } = launchClaude({
         prompt: options.prompt,
         cwd: options.worktreePath,
         env: options.env,
         timeout: options.timeout || this.config.agent.defaultTimeout,
         stdoutLogPath, // Pass log path for tee persistence
+        resumeSessionId: options.resumeSessionId,
       }, this.config);
 
       managedAgent.process = process;
@@ -362,7 +371,7 @@ export class AgentController {
       const agent = this.agents.get(id);
 
       if (agent && agent.info.status === 'pending') {
-        // We need the original spawn options - retrieve from stored info
+        // We need the original create options - retrieve from stored info
         this.startAgent(id, {
           prompt: agent.info.prompt,
           worktreePath: '', // This is a limitation - we'd need to store worktreePath
@@ -540,6 +549,61 @@ export class AgentController {
 
   private getRunningCount(): number {
     return Array.from(this.agents.values()).filter((a) => isRunningState(a.info.status)).length;
+  }
+
+  async resume(id: string, prompt: string, worktreePath: string): Promise<AgentInfo> {
+    const managedAgent = this.agents.get(id);
+    if (!managedAgent) {
+      throw new Error(`Agent '${id}' not found`);
+    }
+
+    if (!isTerminalState(managedAgent.info.status)) {
+      throw new Error(`Agent '${id}' is not in a terminal state (current: ${managedAgent.info.status}). Use sendInput for running agents.`);
+    }
+
+    if (!managedAgent.info.sessionId) {
+      throw new Error(`Agent '${id}' has no session ID. Cannot resume without a previous session.`);
+    }
+
+    const sessionId = managedAgent.info.sessionId;
+
+    // Reset agent state for new run
+    managedAgent.info.prompt = prompt;
+    managedAgent.info.error = undefined;
+    managedAgent.info.exitCode = undefined;
+    managedAgent.info.finishedAt = undefined;
+    managedAgent.outputBuffer = [];
+    managedAgent.parsedEvents = [];
+
+    // Create fresh state machine (starting from terminal state, transition to starting)
+    const newStateMachine = new AgentStateMachine(managedAgent.info.status);
+    // Re-register the transition listener
+    newStateMachine.onTransition((newStatus, oldStatus) => {
+      managedAgent.info.status = newStatus;
+      this.store.saveAgent(managedAgent.info);
+      this.emitEvent({
+        type: 'status_change',
+        agentId: id,
+        timestamp: new Date(),
+        data: { from: oldStatus, to: newStatus },
+      });
+
+      if (isTerminalState(newStatus)) {
+        this.processQueue();
+      }
+    });
+    managedAgent.stateMachine = newStateMachine;
+
+    this.store.saveAgent(managedAgent.info);
+    this.logger.info(`Resuming agent`, { id, sessionId });
+
+    await this.startAgent(id, {
+      prompt,
+      worktreePath,
+      resumeSessionId: sessionId,
+    });
+
+    return managedAgent.info;
   }
 
   setWorktreeInfo(id: string, worktreeId: string, branch: string): void {

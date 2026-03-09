@@ -25,13 +25,14 @@ export interface AgentInfo {
   status: AgentStatus;
   pid?: number;
   createdAt: Date;
-  spawnedAt?: Date; // Timestamp when process was actually spawned (for grace period checking)
+  launchedAt?: Date; // Timestamp when process was actually launched (for grace period checking)
   startedAt?: Date;
   finishedAt?: Date;
   exitCode?: number;
   error?: string;
   metrics: AgentMetrics;
   archived?: boolean; // When true, agent is hidden from main list but data is preserved
+  sessionId?: string; // Claude Code session ID for conversation resume
 }
 
 // Worktree Status
@@ -47,8 +48,8 @@ export interface WorktreeInfo {
   status: WorktreeStatus;
 }
 
-// Spawn Options (from CLI)
-export interface SpawnOptions {
+// Create Options (from CLI)
+export interface CreateOptions {
   prompt: string;
   branch?: string;
   base?: string;
@@ -57,13 +58,14 @@ export interface SpawnOptions {
   autoPR?: boolean;
 }
 
-// Agent Spawn Options (internal)
-export interface AgentSpawnOptions {
+// Agent Create Options (internal)
+export interface AgentCreateOptions {
   prompt: string;
   worktreePath: string;
   name?: string;
   env?: Record<string, string>;
   timeout?: number;
+  resumeSessionId?: string; // Resume from a previous Claude Code session
 }
 
 // Create Worktree Options
@@ -135,7 +137,8 @@ export interface ClaudeStreamEvent {
     name: string;
     input: Record<string, unknown>;
   };
-  subtype?: 'input_request';
+  subtype?: 'input_request' | 'init';
+  session_id?: string;
 }
 
 // State Storage Types

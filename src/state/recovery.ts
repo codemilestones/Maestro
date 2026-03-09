@@ -106,7 +106,7 @@ export async function recoverState(projectRoot?: string): Promise<RecoveryResult
   // Load all agents
   const agents = store.listAgents();
 
-  const gracePeriodMs = 5000; // 5 seconds grace period for newly spawned agents
+  const gracePeriodMs = 5000; // 5 seconds grace period for newly launched agents
 
   for (const agent of agents) {
     if (!needsRecovery(agent)) {
@@ -116,16 +116,16 @@ export async function recoverState(projectRoot?: string): Promise<RecoveryResult
 
     logger.debug('Checking agent process', { id: agent.id, pid: agent.pid });
 
-    // Check grace period for newly spawned agents
-    const spawnedAt = agent.spawnedAt ? new Date(agent.spawnedAt) : null;
-    const isWithinGracePeriod = spawnedAt && (Date.now() - spawnedAt.getTime()) < gracePeriodMs;
+    // Check grace period for newly launched agents
+    const launchedAt = agent.launchedAt ? new Date(agent.launchedAt) : null;
+    const isWithinGracePeriod = launchedAt && (Date.now() - launchedAt.getTime()) < gracePeriodMs;
 
     if (isWithinGracePeriod) {
       // Agent is within grace period, assume it's still starting up
       logger.debug('Agent within grace period, skipping process check', {
         id: agent.id,
-        spawnedAt: spawnedAt?.toISOString(),
-        ageMs: spawnedAt ? Date.now() - spawnedAt.getTime() : null,
+        launchedAt: launchedAt?.toISOString(),
+        ageMs: launchedAt ? Date.now() - launchedAt.getTime() : null,
       });
       result.recovered.push(agent);
       continue;

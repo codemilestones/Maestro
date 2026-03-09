@@ -145,8 +145,8 @@ export function App({ projectRoot }: AppProps) {
           taskId,
         });
 
-        // Spawn agent
-        const agent = await controller.spawn({
+        // Create agent
+        const agent = await controller.create({
           prompt,
           worktreePath: worktree.path,
         });

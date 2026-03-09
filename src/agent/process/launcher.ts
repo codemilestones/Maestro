@@ -1,5 +1,5 @@
 import { execa, type ResultPromise, type Options as ExecaOptions } from 'execa';
-import { spawn as nodeSpawn, type ChildProcess, type SpawnOptions } from 'node:child_process';
+import { spawn as nodeSpawn, type ChildProcess } from 'node:child_process';
 import { mkdirSync, existsSync, openSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadConfig, MaestroConfig } from '../../shared/config.js';
@@ -7,21 +7,22 @@ import { getLogger, Logger } from '../../shared/logger.js';
 
 export type ExecaChildProcess = ResultPromise;
 
-export interface SpawnerOptions {
+export interface LauncherOptions {
   prompt: string;
   cwd: string;
   env?: Record<string, string>;
   timeout?: number;
   skipPermissions?: boolean;
   stdoutLogPath?: string; // Path to persist stdout for recovery
+  resumeSessionId?: string; // Claude Code session ID for conversation resume
 }
 
-export interface SpawnedProcess {
+export interface LaunchedProcess {
   process: ExecaChildProcess;
   pid: number;
 }
 
-export function buildClaudeArgs(options: SpawnerOptions, config: MaestroConfig): string[] {
+export function buildClaudeArgs(options: LauncherOptions, config: MaestroConfig): string[] {
   const args: string[] = [
     '--print',
     '--output-format', 'stream-json',
@@ -33,18 +34,22 @@ export function buildClaudeArgs(options: SpawnerOptions, config: MaestroConfig):
     args.push('--dangerously-skip-permissions');
   }
 
+  if (options.resumeSessionId) {
+    args.push('--resume', options.resumeSessionId);
+  }
+
   args.push('-p', options.prompt);
 
   return args;
 }
 
-export function spawnClaude(options: SpawnerOptions, config?: MaestroConfig): SpawnedProcess {
+export function launchClaude(options: LauncherOptions, config?: MaestroConfig): LaunchedProcess {
   const logger = getLogger();
   const effectiveConfig = config || loadConfig();
   const claudePath = effectiveConfig.agent.claudePath;
   const args = buildClaudeArgs(options, effectiveConfig);
 
-  logger.debug(`Spawning Claude Code`, {
+  logger.debug(`Launching Claude Code`, {
     claudePath,
     args: args.slice(0, -2).concat(['[prompt]']), // Don't log full prompt
     cwd: options.cwd,
@@ -67,7 +72,7 @@ export function spawnClaude(options: SpawnerOptions, config?: MaestroConfig): Sp
       stdoutFd,
     });
 
-    // Use native spawn with detached mode for process independence
+    // Use native child_process.spawn with detached mode for process independence
     // Use file descriptor directly so writes persist after parent exits
     const childProcess = nodeSpawn(claudePath, args, {
       cwd: options.cwd,
@@ -81,13 +86,13 @@ export function spawnClaude(options: SpawnerOptions, config?: MaestroConfig): Sp
     });
 
     if (!childProcess.pid) {
-      throw new Error('Failed to spawn Claude Code process - no PID assigned');
+      throw new Error('Failed to launch Claude Code process - no PID assigned');
     }
 
     // Allow parent to exit independently
     childProcess.unref();
 
-    logger.info(`Claude Code process spawned (detached)`, { pid: childProcess.pid });
+    logger.info(`Claude Code process launched (detached)`, { pid: childProcess.pid });
 
     // Wrap in execa-compatible interface (limited functionality)
     return {
@@ -96,7 +101,7 @@ export function spawnClaude(options: SpawnerOptions, config?: MaestroConfig): Sp
     };
   }
 
-  // Standard spawn without persistence
+  // Standard launch without persistence
   const execaOptions: ExecaOptions = {
     cwd: options.cwd,
     env: {
@@ -114,10 +119,10 @@ export function spawnClaude(options: SpawnerOptions, config?: MaestroConfig): Sp
   const childProcess = execa(claudePath, args, execaOptions);
 
   if (!childProcess.pid) {
-    throw new Error('Failed to spawn Claude Code process - no PID assigned');
+    throw new Error('Failed to launch Claude Code process - no PID assigned');
   }
 
-  logger.info(`Claude Code process spawned`, { pid: childProcess.pid });
+  logger.info(`Claude Code process launched`, { pid: childProcess.pid });
 
   return {
     process: childProcess,

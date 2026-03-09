@@ -22,6 +22,7 @@ export interface ParserCallbacks {
   onToolUse?: (name: string, input: Record<string, unknown>) => void;
   onInputRequest?: () => void;
   onResult?: (content: string) => void;
+  onSessionInit?: (sessionId: string) => void;
   onError?: (error: Error) => void;
 }
 
@@ -91,6 +92,15 @@ export class OutputParser {
   }
 
   private categorizeEvent(event: ClaudeStreamEvent): ParsedEvent {
+    // Check for session init (system/init event with session_id)
+    if (event.type === 'system' && event.subtype === 'init' && event.session_id) {
+      return {
+        type: 'system',
+        raw: event,
+        content: event.session_id,
+      };
+    }
+
     // Check for input request first
     if (event.subtype === 'input_request') {
       return {
@@ -171,6 +181,12 @@ export class OutputParser {
         case 'result':
           if (event.content && this.callbacks.onResult) {
             this.callbacks.onResult(event.content);
+          }
+          break;
+
+        case 'system':
+          if (event.raw.subtype === 'init' && event.raw.session_id && this.callbacks.onSessionInit) {
+            this.callbacks.onSessionInit(event.raw.session_id);
           }
           break;
       }

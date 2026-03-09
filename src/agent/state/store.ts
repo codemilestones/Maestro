@@ -33,7 +33,7 @@ export class AgentStore {
       // Convert date strings back to Date objects
       for (const agent of Object.values(state.agents)) {
         agent.createdAt = new Date(agent.createdAt);
-        if (agent.spawnedAt) agent.spawnedAt = new Date(agent.spawnedAt);
+        if (agent.launchedAt) agent.launchedAt = new Date(agent.launchedAt);
         if (agent.startedAt) agent.startedAt = new Date(agent.startedAt);
         if (agent.finishedAt) agent.finishedAt = new Date(agent.finishedAt);
       }

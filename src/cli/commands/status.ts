@@ -72,7 +72,7 @@ export const statusCommand = new Command('status')
 
       if (agents.length === 0) {
         console.log(chalk.gray('No agents found.'));
-        console.log(chalk.gray(`Create one with: ${chalk.cyan('maestro spawn "task description"')}`));
+        console.log(chalk.gray(`Create one with: ${chalk.cyan('maestro new "task description"')}`));
         return;
       }
 

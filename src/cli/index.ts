@@ -2,7 +2,7 @@
 
 import { Command } from 'commander';
 import { initCommand } from './commands/init.js';
-import { spawnCommand } from './commands/spawn.js';
+import { newCommand } from './commands/new.js';
 import { statusCommand } from './commands/status.js';
 import { attachCommand } from './commands/attach.js';
 import { logsCommand } from './commands/logs.js';
@@ -11,6 +11,7 @@ import { cleanupCommand } from './commands/cleanup.js';
 import { configCommand } from './commands/config.js';
 import { recoverCommand } from './commands/recover.js';
 import { prCommand } from './commands/pr.js';
+import { continueCommand } from './commands/continue.js';
 import { recoverState } from '../state/recovery.js';
 import { LogRotation } from '../state/logRotation.js';
 import { getLogger } from '../shared/logger.js';
@@ -26,7 +27,7 @@ program
 
 // Register commands
 program.addCommand(initCommand);
-program.addCommand(spawnCommand);
+program.addCommand(newCommand);
 program.addCommand(statusCommand);
 program.addCommand(attachCommand);
 program.addCommand(logsCommand);
@@ -35,6 +36,7 @@ program.addCommand(cleanupCommand);
 program.addCommand(configCommand);
 program.addCommand(recoverCommand);
 program.addCommand(prCommand);
+program.addCommand(continueCommand);
 
 // Startup tasks (only if maestro is initialized)
 async function runStartupTasks(): Promise<void> {

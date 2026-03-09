@@ -43,7 +43,7 @@ export function HelpModal({ onClose }: HelpModalProps) {
 
         <Box flexDirection="column" marginTop={1}>
           <Text bold dimColor>CLI Commands</Text>
-          <Text dimColor>  maestro spawn "prompt"  Create new agent</Text>
+          <Text dimColor>  maestro new "prompt"    Create new agent</Text>
           <Text dimColor>  maestro pr {'<id>'}        Create PR for agent</Text>
           <Text dimColor>  maestro logs {'<id>'}      View agent logs</Text>
         </Box>
