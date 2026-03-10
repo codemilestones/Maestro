@@ -191,6 +191,18 @@ export class AgentController {
           this.emitEvent({ type: 'input_request', agentId: info.id, timestamp: new Date() });
         }
       },
+      onResult: (content) => {
+        const agent = this.agents.get(info.id);
+        if (agent && !isTerminalState(agent.info.status)) {
+          agent.info.finishedAt = new Date();
+          agent.info.metrics.duration =
+            agent.info.finishedAt.getTime() - (agent.info.startedAt?.getTime() || agent.info.createdAt.getTime());
+          agent.info.metrics.filesModified = extractFilesFromToolCalls(agent.parsedEvents);
+          agent.stateMachine.finish();
+          this.store.saveAgent(agent.info);
+          agentLogger.info('Agent completed via result event');
+        }
+      },
       onSessionInit: (sessionId) => {
         const agent = this.agents.get(info.id);
         if (agent) {
@@ -427,6 +439,36 @@ export class AgentController {
     managedAgent.stateMachine.run();
   }
 
+  /** Lazy check: verify running agents are still alive, update status if not */
+  private refreshRunningAgent(managedAgent: ManagedAgent): void {
+    const info = managedAgent.info;
+    if (!isRunningState(info.status)) return;
+
+    // Skip if within grace period
+    const launchedAt = info.launchedAt ? new Date(info.launchedAt) : null;
+    if (launchedAt && (Date.now() - launchedAt.getTime()) < 5000) return;
+
+    // Check if process is still running
+    if (info.pid && !isProcessRunning(info.pid)) {
+      const completionStatus = this.checkAgentCompletionFromLog(info.id);
+
+      if (completionStatus === 'finished') {
+        this.logger.info(`Agent completed (lazy check from log)`, { id: info.id });
+        info.finishedAt = new Date();
+        info.metrics.duration =
+          info.finishedAt.getTime() - (info.startedAt?.getTime() || info.createdAt.getTime());
+        managedAgent.stateMachine.finish();
+      } else {
+        this.logger.warn(`Agent process dead (lazy check)`, { id: info.id, pid: info.pid });
+        info.error = 'Process not found';
+        info.finishedAt = new Date();
+        managedAgent.stateMachine.fail();
+      }
+
+      this.store.saveAgent(info);
+    }
+  }
+
   getStatus(id: string): AgentStatus {
     const managedAgent = this.agents.get(id);
     if (!managedAgent) {
@@ -437,13 +479,17 @@ export class AgentController {
 
   getInfo(id: string): AgentInfo | null {
     const managedAgent = this.agents.get(id);
-    return managedAgent?.info || null;
+    if (!managedAgent) return null;
+    this.refreshRunningAgent(managedAgent);
+    return managedAgent.info;
   }
 
   listAll(): AgentInfo[] {
-    return Array.from(this.agents.values())
-      .filter((a) => !a.info.archived)
-      .map((a) => a.info);
+    const agents = Array.from(this.agents.values()).filter((a) => !a.info.archived);
+    for (const agent of agents) {
+      this.refreshRunningAgent(agent);
+    }
+    return agents.map((a) => a.info);
   }
 
   archive(id: string): void {

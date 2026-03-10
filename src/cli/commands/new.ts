@@ -99,9 +99,6 @@ export const newCommand = new Command('new')
       console.log(chalk.cyan(`  maestro attach           `) + chalk.gray('- Open TUI'));
       console.log(chalk.cyan(`  maestro logs ${agent.id} `) + chalk.gray('- View logs'));
 
-      // Exit cleanly - agent runs in background
-      process.exit(0);
-
     } catch (error) {
       console.error(chalk.red(`Error: ${error instanceof Error ? error.message : error}`));
       process.exit(1);
