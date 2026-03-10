@@ -8,6 +8,8 @@ import { loadConfig } from '../shared/config.js';
 import { AgentList } from './components/AgentList.js';
 import { Preview } from './components/Preview.js';
 import { StatusBar } from './components/StatusBar.js';
+import { StatusIndicator } from './components/StatusIndicator.js';
+import { ConversationInput } from './components/ConversationInput.js';
 import { HelpModal } from './components/HelpModal.js';
 import { NewAgentModal } from './components/NewAgentModal.js';
 import { useAgents } from './hooks/useAgents.js';
@@ -29,105 +31,130 @@ export function App({ projectRoot }: AppProps) {
 
   const [viewMode, setViewMode] = useState<ViewMode>('list');
 
+  // In attached mode, only handle Esc (ConversationInput handles the rest)
   const keyboardHandlers = useMemo(
-    () => ({
-      // Quit
-      q: () => {
-        if (viewMode === 'list') {
-          exit();
-        }
-      },
-
-      // Help
-      '?': () => {
-        setViewMode(viewMode === 'help' ? 'list' : 'help');
-      },
-
-      // Escape - close modals or exit attached mode
-      escape: () => {
-        if (viewMode !== 'list') {
-          setViewMode('list');
-        }
-      },
-
-      // Enter - attach to agent
-      enter: () => {
-        if (viewMode === 'list' && selectedAgent) {
-          setViewMode('attached');
-        } else if (viewMode === 'help') {
-          setViewMode('list');
-        }
-      },
-
-      // Navigation (arrow keys)
-      up: () => {
-        if (viewMode === 'list') {
-          selectByIndex(Math.max(0, selectedIndex - 1));
-        }
-      },
-      down: () => {
-        if (viewMode === 'list') {
-          selectByIndex(Math.min(agents.length - 1, selectedIndex + 1));
-        }
-      },
-
-      // Navigation (vim keys j/k)
-      j: () => {
-        if (viewMode === 'list') {
-          selectByIndex(Math.min(agents.length - 1, selectedIndex + 1));
-        }
-      },
-      k: () => {
-        if (viewMode === 'list') {
-          selectByIndex(Math.max(0, selectedIndex - 1));
-        }
-      },
-
-      // Number keys 1-9
-      ...Object.fromEntries(
-        Array.from({ length: 9 }, (_, i) => [
-          `num${i + 1}`,
-          () => {
-            if (viewMode === 'list') {
-              selectByIndex(i);
-            }
+    () => {
+      if (viewMode === 'attached') {
+        return {
+          escape: () => {
+            setViewMode('list');
           },
-        ])
-      ),
+        };
+      }
 
-      // Refresh
-      r: () => {
-        refresh();
-      },
-
-      // Kill agent (x key, as per README)
-      x: async () => {
-        if (viewMode === 'list' && selectedAgent) {
-          try {
-            await controller.kill(selectedAgent.id);
-            refresh();
-          } catch {
-            // Ignore errors in TUI
+      return {
+        // Quit
+        q: () => {
+          if (viewMode === 'list') {
+            exit();
           }
-        }
-      },
+        },
 
-      // New agent (n key)
-      n: () => {
-        if (viewMode === 'list') {
-          setViewMode('new_agent');
-        }
-      },
+        // Help
+        '?': () => {
+          setViewMode(viewMode === 'help' ? 'list' : 'help');
+        },
 
-      // Archive agent (a key)
-      a: () => {
-        if (viewMode === 'list' && selectedAgent && isTerminalState(selectedAgent.status)) {
-          controller.archive(selectedAgent.id);
+        // Escape - close modals
+        escape: () => {
+          if (viewMode !== 'list') {
+            setViewMode('list');
+          }
+        },
+
+        // Enter - attach to agent
+        enter: () => {
+          if (viewMode === 'list' && selectedAgent) {
+            setViewMode('attached');
+          } else if (viewMode === 'help') {
+            setViewMode('list');
+          }
+        },
+
+        // Navigation (arrow keys)
+        up: () => {
+          if (viewMode === 'list') {
+            selectByIndex(Math.max(0, selectedIndex - 1));
+          }
+        },
+        down: () => {
+          if (viewMode === 'list') {
+            selectByIndex(Math.min(agents.length - 1, selectedIndex + 1));
+          }
+        },
+
+        // Navigation (vim keys j/k)
+        j: () => {
+          if (viewMode === 'list') {
+            selectByIndex(Math.min(agents.length - 1, selectedIndex + 1));
+          }
+        },
+        k: () => {
+          if (viewMode === 'list') {
+            selectByIndex(Math.max(0, selectedIndex - 1));
+          }
+        },
+
+        // Number keys 1-9
+        ...Object.fromEntries(
+          Array.from({ length: 9 }, (_, i) => [
+            `num${i + 1}`,
+            () => {
+              if (viewMode === 'list') {
+                selectByIndex(i);
+              }
+            },
+          ])
+        ),
+
+        // Refresh
+        r: () => {
           refresh();
-        }
-      },
-    }),
+        },
+
+        // Kill agent (x key, as per README)
+        x: async () => {
+          if (viewMode === 'list' && selectedAgent) {
+            try {
+              await controller.kill(selectedAgent.id);
+              refresh();
+            } catch {
+              // Ignore errors in TUI
+            }
+          }
+        },
+
+        // New agent (n key)
+        n: () => {
+          if (viewMode === 'list') {
+            setViewMode('new_agent');
+          }
+        },
+
+        // Archive agent (a key)
+        a: () => {
+          if (viewMode === 'list' && selectedAgent && isTerminalState(selectedAgent.status)) {
+            controller.archive(selectedAgent.id);
+            refresh();
+          }
+        },
+      };
+    },
     [viewMode, selectedAgent, selectedIndex, agents.length, selectByIndex, refresh, controller, exit]
+  );
+
+  // Handle conversation input in attached view
+  const handleConversationInput = useCallback(
+    async (text: string) => {
+      if (!selectedAgent) return;
+      try {
+        await controller.handleConversationInput(selectedAgent.id, text);
+        refresh();
+      } catch {
+        // Ignore errors in TUI
+      }
+    },
+    [controller, selectedAgent, refresh]
   );
 
   // Handle creating a new agent
@@ -190,21 +217,29 @@ export function App({ projectRoot }: AppProps) {
     );
   }
 
-  // Attached mode - full screen output
+  // Attached mode - output + conversation input
   if (viewMode === 'attached' && selectedAgent) {
     return (
       <Box flexDirection="column" width="100%">
-        <Box borderStyle="single" borderColor="cyan" paddingX={1}>
-          <Text bold color="cyan">
-            Attached to: {selectedAgent.name || selectedAgent.id}
-          </Text>
-          <Text dimColor> (Press Esc to detach)</Text>
+        <Box borderStyle="single" borderColor="cyan" paddingX={1} justifyContent="space-between">
+          <Box>
+            <Text bold color="cyan">
+              {selectedAgent.name || selectedAgent.id}
+            </Text>
+            <Text> </Text>
+            <StatusIndicator status={selectedAgent.status} />
+          </Box>
+          <Text dimColor>Esc to detach</Text>
         </Box>
         <Box flexDirection="column" flexGrow={1} paddingX={1}>
           {lines.slice(-30).map((line, i) => (
             <Text key={i}>{line}</Text>
           ))}
         </Box>
+        <ConversationInput
+          agent={selectedAgent}
+          onSubmit={handleConversationInput}
+        />
       </Box>
     );
   }

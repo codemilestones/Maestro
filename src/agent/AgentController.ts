@@ -10,6 +10,7 @@ import { launchClaude, killProcess, sendInput as sendProcessInput, isProcessRunn
 import { OutputParser, ParsedEvent, extractFilesFromToolCalls } from './output/parser.js';
 import { AgentStateMachine, isTerminalState, isRunningState } from './state/state.js';
 import { AgentStore } from './state/store.js';
+import { WorktreeManager } from '../worktree/WorktreeManager.js';
 
 interface ManagedAgent {
   info: AgentInfo;
@@ -612,6 +613,43 @@ export class AgentController {
       managedAgent.info.worktreeId = worktreeId;
       managedAgent.info.branch = branch;
       this.store.saveAgent(managedAgent.info);
+    }
+  }
+
+  async handleConversationInput(id: string, text: string): Promise<void> {
+    const managedAgent = this.agents.get(id);
+    if (!managedAgent) {
+      throw new Error(`Agent '${id}' not found`);
+    }
+
+    if (managedAgent.info.status === 'waiting_input') {
+      await this.sendInput(id, text);
+    } else if (isTerminalState(managedAgent.info.status)) {
+      if (!managedAgent.info.sessionId) {
+        throw new Error(`Agent '${id}' has no session ID. Cannot resume.`);
+      }
+      const worktreePath = this.getWorktreePath(id);
+      if (!worktreePath) {
+        throw new Error(`Agent '${id}' has no worktree path. Cannot resume.`);
+      }
+      await this.resume(id, text, worktreePath);
+    } else {
+      throw new Error(`Agent '${id}' is not accepting input (status: ${managedAgent.info.status})`);
+    }
+  }
+
+  getWorktreePath(id: string): string | null {
+    const managedAgent = this.agents.get(id);
+    if (!managedAgent || !managedAgent.info.worktreeId) {
+      return null;
+    }
+
+    try {
+      const worktreeManager = new WorktreeManager(this.projectRoot);
+      return worktreeManager.getPath(managedAgent.info.worktreeId);
+    } catch {
+      this.logger.warn(`Failed to resolve worktree path`, { id, worktreeId: managedAgent.info.worktreeId });
+      return null;
     }
   }
 }
