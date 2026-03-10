@@ -1,5 +1,5 @@
-import React from 'react';
-import { Box, Text } from 'ink';
+import React, { useCallback } from 'react';
+import { Box, Text, useInput } from 'ink';
 import { AgentInfo, OutputLine } from '../../shared/types.js';
 import { useScrollable } from '../hooks/useScrollable.js';
 
@@ -11,12 +11,22 @@ interface PreviewProps {
 }
 
 export function Preview({ agent, lines, maxLines = 15, isActive = true }: PreviewProps) {
-  const { scrollOffset, isAtBottom } = useScrollable({
+  const { scrollOffset, scrollUp, scrollDown, isAtBottom } = useScrollable({
     totalLines: lines.length,
     visibleLines: maxLines,
     autoScroll: true,
     isActive,
   });
+
+  // Bind PageUp/PageDown for scrolling in list mode
+  useInput(useCallback((_char, key) => {
+    if (!isActive) return;
+    if (key.pageUp) {
+      scrollUp(maxLines);
+    } else if (key.pageDown) {
+      scrollDown(maxLines);
+    }
+  }, [isActive, scrollUp, scrollDown, maxLines]));
 
   const displayLines = lines.slice(scrollOffset, scrollOffset + maxLines);
 

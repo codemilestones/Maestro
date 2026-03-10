@@ -4,6 +4,7 @@ import { AgentInfo, AgentStatus } from '../shared/types.js';
 import { AgentStore } from '../agent/state/store.js';
 import { WorktreeManager } from '../worktree/WorktreeManager.js';
 import { getLogger } from '../shared/logger.js';
+import { extractSessionIdFromLog } from '../shared/logUtils.js';
 
 /**
  * Check if a process is running by PID
@@ -142,6 +143,16 @@ export async function recoverState(projectRoot?: string): Promise<RecoveryResult
       // Process is not running - check stdout log to determine if it finished successfully
       const effectiveProjectRoot = projectRoot || process.cwd();
       const completionStatus = checkAgentCompletionFromLog(agent.id, effectiveProjectRoot);
+
+      // Recover sessionId from log if missing (fd mode doesn't capture via pipe)
+      if (!agent.sessionId) {
+        const logPath = getStdoutLogPath(agent.id, effectiveProjectRoot);
+        const sessionId = extractSessionIdFromLog(logPath);
+        if (sessionId) {
+          agent.sessionId = sessionId;
+          logger.debug('Session ID recovered from log during recovery', { id: agent.id, sessionId });
+        }
+      }
 
       if (completionStatus === 'finished') {
         logger.info('Agent completed successfully (from log analysis)', { id: agent.id });

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { Box, Text, useApp, useStdout } from 'ink';
+import { Box, Text, useApp, useStdout, useInput } from 'ink';
 import { AgentController } from '../agent/AgentController.js';
 import { isTerminalState } from '../agent/state/state.js';
 import { WorktreeManager } from '../worktree/WorktreeManager.js';
@@ -256,12 +256,25 @@ function AttachedView({ agent, lines, onConversationInput, onDetach }: AttachedV
   // Reserve 3 for header, 3 for input area
   const visibleLines = Math.max(5, termHeight - 6);
 
-  const { scrollOffset, isAtBottom } = useScrollable({
+  const { scrollOffset, scrollUp, scrollDown, isAtBottom } = useScrollable({
     totalLines: lines.length,
     visibleLines,
     autoScroll: true,
     isActive: true,
   });
+
+  // Bind PageUp/PageDown and Shift+Up/Down for scrolling
+  useInput(useCallback((_char, key) => {
+    if (key.pageUp) {
+      scrollUp(visibleLines);
+    } else if (key.pageDown) {
+      scrollDown(visibleLines);
+    } else if (key.shift && key.upArrow) {
+      scrollUp(3);
+    } else if (key.shift && key.downArrow) {
+      scrollDown(3);
+    }
+  }, [scrollUp, scrollDown, visibleLines]));
 
   const displayLines = lines.slice(scrollOffset, scrollOffset + visibleLines);
 

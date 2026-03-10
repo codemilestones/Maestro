@@ -52,7 +52,8 @@ export function ConversationInput({ agent, onSubmit }: ConversationInputProps) {
           return;
         }
 
-        if (char && !key.ctrl && !key.meta && !key.escape) {
+        // Filter out escape sequence fragments (defensive against SGR mouse leak)
+        if (char && !key.ctrl && !key.meta && !key.escape && !/[\x1b\[\]<>]/.test(char)) {
           setInput((prev) => prev + char);
         }
       },

@@ -11,6 +11,7 @@ import { OutputParser, ParsedEvent, extractFilesFromToolCalls } from './output/p
 import { AgentStateMachine, isTerminalState, isRunningState } from './state/state.js';
 import { AgentStore } from './state/store.js';
 import { WorktreeManager } from '../worktree/WorktreeManager.js';
+import { extractSessionIdFromLog } from '../shared/logUtils.js';
 
 interface ManagedAgent {
   info: AgentInfo;
@@ -92,22 +93,7 @@ export class AgentController {
   /** Extract session_id from the stdout log's init event */
   private extractSessionIdFromLog(agentId: string): string | null {
     const logPath = this.getStdoutLogPath(agentId);
-    if (!existsSync(logPath)) return null;
-
-    try {
-      const content = readFileSync(logPath, 'utf-8');
-      // session_id is in the first line (system/init event)
-      const firstLine = content.split('\n').find(l => l.trim());
-      if (!firstLine) return null;
-
-      const event = JSON.parse(firstLine);
-      if (event.type === 'system' && event.subtype === 'init' && event.session_id) {
-        return event.session_id;
-      }
-    } catch {
-      // Ignore errors
-    }
-    return null;
+    return extractSessionIdFromLog(logPath);
   }
 
   private restoreAgents(): void {
@@ -586,6 +572,13 @@ export class AgentController {
       const content = readFileSync(logPath, 'utf-8');
       const lines = content.trim().split('\n').filter(Boolean);
       const output: OutputLine[] = [];
+
+      // Insert the initial prompt as the first user message
+      // (the initial prompt is not emitted as a stream event)
+      const agent = this.agents.get(agentId);
+      if (agent?.info.prompt) {
+        output.push({ role: 'user', content: agent.info.prompt });
+      }
 
       for (const line of lines) {
         try {
