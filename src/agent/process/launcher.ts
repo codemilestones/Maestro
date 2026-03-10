@@ -1,6 +1,6 @@
 import { execa, type ResultPromise, type Options as ExecaOptions } from 'execa';
 import { spawn as nodeSpawn, type ChildProcess } from 'node:child_process';
-import { mkdirSync, existsSync, openSync } from 'node:fs';
+import { mkdirSync, existsSync, createWriteStream } from 'node:fs';
 import { join } from 'node:path';
 import { loadConfig, MaestroConfig } from '../../shared/config.js';
 import { getLogger, Logger } from '../../shared/logger.js';
@@ -56,7 +56,9 @@ export function launchClaude(options: LauncherOptions, config?: MaestroConfig): 
     stdoutLogPath: options.stdoutLogPath,
   });
 
-  // If stdoutLogPath is provided, use detached process with file descriptor logging
+  // If stdoutLogPath is provided, use pipe mode with file tee for persistence
+  // This gives us both real-time pipe access (for parsing/streaming) and file
+  // persistence (for crash recovery), plus stdin pipe for sendInput support.
   if (options.stdoutLogPath) {
     // Ensure log directory exists
     const logDir = join(options.stdoutLogPath, '..');
@@ -64,16 +66,10 @@ export function launchClaude(options: LauncherOptions, config?: MaestroConfig): 
       mkdirSync(logDir, { recursive: true });
     }
 
-    // Open file descriptor for stdout persistence (will be inherited by child process)
-    const stdoutFd = openSync(options.stdoutLogPath, 'a');
-
-    logger.debug(`Using detached process with file descriptor logging`, {
+    logger.debug(`Using pipe mode with file tee`, {
       stdoutLogPath: options.stdoutLogPath,
-      stdoutFd,
     });
 
-    // Use native child_process.spawn with detached mode for process independence
-    // Use file descriptor directly so writes persist after parent exits
     const childProcess = nodeSpawn(claudePath, args, {
       cwd: options.cwd,
       env: {
@@ -82,19 +78,38 @@ export function launchClaude(options: LauncherOptions, config?: MaestroConfig): 
         CLAUDE_CODE_ENTRYPOINT: 'cli',
       },
       detached: true,
-      stdio: ['ignore', stdoutFd, stdoutFd], // stdout and stderr go to file
+      stdio: ['pipe', 'pipe', 'pipe'], // All pipes for real-time access
     });
 
     if (!childProcess.pid) {
       throw new Error('Failed to launch Claude Code process - no PID assigned');
     }
 
+    // Tee stdout to log file for persistence
+    const logStream = createWriteStream(options.stdoutLogPath, { flags: 'a' });
+    if (childProcess.stdout) {
+      childProcess.stdout.on('data', (chunk: Buffer) => {
+        logStream.write(chunk);
+      });
+    }
+    // Also tee stderr to log file
+    if (childProcess.stderr) {
+      childProcess.stderr.on('data', (chunk: Buffer) => {
+        logStream.write(chunk);
+      });
+    }
+
+    // Clean up log stream when process exits
+    childProcess.on('exit', () => {
+      logStream.end();
+    });
+
     // Allow parent to exit independently
     childProcess.unref();
 
-    logger.info(`Claude Code process launched (detached)`, { pid: childProcess.pid });
+    logger.info(`Claude Code process launched (pipe+tee)`, { pid: childProcess.pid });
 
-    // Wrap in execa-compatible interface (limited functionality)
+    // Wrap in execa-compatible interface
     return {
       process: childProcess as unknown as ExecaChildProcess,
       pid: childProcess.pid,
