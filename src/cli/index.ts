@@ -16,6 +16,9 @@ import { recoverState } from '../state/recovery.js';
 import { LogRotation } from '../state/logRotation.js';
 import { getLogger } from '../shared/logger.js';
 import { isMaestroInitialized } from '../shared/config.js';
+import { BUILD_TIME } from '../shared/buildInfo.js';
+
+const VERSION = '1.0.0';
 
 const program = new Command();
 const logger = getLogger();
@@ -23,7 +26,7 @@ const logger = getLogger();
 program
   .name('maestro')
   .description('Multi-Agent orchestration CLI for Claude Code')
-  .version('1.0.0');
+  .version(`${VERSION} (build: ${BUILD_TIME})`, '-v, --version');
 
 // Register commands
 program.addCommand(initCommand);
@@ -61,7 +64,7 @@ async function runStartupTasks(): Promise<void> {
 
 // Global error handling
 program.exitOverride((err) => {
-  if (err.code === 'commander.help') {
+  if (err.code === 'commander.help' || err.code === 'commander.version') {
     process.exit(0);
   }
   console.error(`Error: ${err.message}`);

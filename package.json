@@ -8,6 +8,7 @@
     "maestro": "./dist/cli/index.js"
   },
   "scripts": {
+    "prebuild": "npx tsx scripts/generateBuildInfo.ts",
     "build": "tsc",
     "postbuild": "chmod +x dist/cli/index.js",
     "dev": "tsc --watch",
