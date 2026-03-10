@@ -2,7 +2,7 @@ import { type ExecaChildProcess } from './process/launcher.js';
 import { Readable } from 'node:stream';
 import { existsSync, readFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { AgentInfo, AgentStatus, AgentMetrics, AgentCreateOptions, AgentEvent, AgentEventHandler } from '../shared/types.js';
+import { AgentInfo, AgentStatus, AgentMetrics, AgentCreateOptions, AgentEvent, AgentEventHandler, OutputLine } from '../shared/types.js';
 import { generateAgentId } from '../shared/id.js';
 import { loadConfig, MaestroConfig } from '../shared/config.js';
 import { getLogger, createAgentLogger, Logger } from '../shared/logger.js';
@@ -17,7 +17,7 @@ interface ManagedAgent {
   process?: ExecaChildProcess;
   stateMachine: AgentStateMachine;
   parser: OutputParser;
-  outputBuffer: string[];
+  outputBuffer: OutputLine[];
   parsedEvents: ParsedEvent[];
   agentLogger: Logger;
 }
@@ -209,12 +209,13 @@ export class AgentController {
     const agentLogger = createAgentLogger(info.id, this.projectRoot);
 
     const parser = new OutputParser({
-      onMessage: (content) => {
+      onMessage: (content, role) => {
         const agent = this.agents.get(info.id);
         if (agent) {
-          agent.outputBuffer.push(content);
+          const line: OutputLine = { role: role || 'assistant', content };
+          agent.outputBuffer.push(line);
           agentLogger.debug(`Output: ${content}`);
-          this.emitEvent({ type: 'output', agentId: info.id, timestamp: new Date(), data: content });
+          this.emitEvent({ type: 'output', agentId: info.id, timestamp: new Date(), data: line });
         }
       },
       onToolUse: (name, input) => {
@@ -558,7 +559,7 @@ export class AgentController {
     this.logger.info(`Agent archived`, { id });
   }
 
-  getOutput(id: string): string[] {
+  getOutput(id: string): OutputLine[] {
     const managedAgent = this.agents.get(id);
     if (!managedAgent) return [];
 
@@ -574,7 +575,7 @@ export class AgentController {
   }
 
   /** Load output from persisted stdout log file */
-  private loadOutputFromLog(agentId: string): string[] {
+  private loadOutputFromLog(agentId: string): OutputLine[] {
     const logPath = this.getStdoutLogPath(agentId);
     if (!existsSync(logPath)) {
       this.logger.debug(`No stdout log found for loading output`, { id: agentId });
@@ -584,22 +585,25 @@ export class AgentController {
     try {
       const content = readFileSync(logPath, 'utf-8');
       const lines = content.trim().split('\n').filter(Boolean);
-      const output: string[] = [];
+      const output: OutputLine[] = [];
 
       for (const line of lines) {
         try {
           const event = JSON.parse(line);
-          // Extract message content from assistant events
-          if (event.type === 'assistant' && event.message?.content) {
+          const role: 'user' | 'assistant' = event.type === 'user' ? 'user' : 'assistant';
+
+          // Extract text content from assistant, user, and result events
+          if ((event.type === 'assistant' || event.type === 'user' || event.type === 'result') && event.message?.content) {
             const messageContent = event.message.content;
             if (Array.isArray(messageContent)) {
               for (const block of messageContent) {
+                // Only extract text blocks (skip tool_result, tool_use, etc.)
                 if (block.type === 'text' && block.text) {
-                  output.push(block.text);
+                  output.push({ role, content: block.text });
                 }
               }
             } else if (typeof messageContent === 'string') {
-              output.push(messageContent);
+              output.push({ role, content: messageContent });
             }
           }
         } catch {
@@ -608,7 +612,6 @@ export class AgentController {
       }
 
       this.logger.debug(`Loaded output from log file`, { id: agentId, lineCount: output.length });
-      // Return only the last 100 lines to limit memory usage
       return output.slice(-100);
     } catch (error) {
       this.logger.warn(`Error loading output from log`, { id: agentId, error: (error as Error).message });

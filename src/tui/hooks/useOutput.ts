@@ -1,18 +1,18 @@
 import { useState, useEffect, useCallback } from 'react';
 import { AgentController } from '../../agent/AgentController.js';
-import { AgentEvent } from '../../shared/types.js';
+import { AgentEvent, OutputLine } from '../../shared/types.js';
 import { getLogger } from '../../shared/logger.js';
 
-const MAX_LINES = 100;
+const MAX_LINES = 200;
 const logger = getLogger();
 
 export interface UseOutputResult {
-  lines: string[];
+  lines: OutputLine[];
   clear: () => void;
 }
 
 export function useOutput(controller: AgentController, agentId: string | null): UseOutputResult {
-  const [lines, setLines] = useState<string[]>([]);
+  const [lines, setLines] = useState<OutputLine[]>([]);
 
   useEffect(() => {
     if (!agentId) {
@@ -30,10 +30,11 @@ export function useOutput(controller: AgentController, agentId: string | null): 
 
     // Subscribe to new output
     const unsubscribe = controller.onEvent((event: AgentEvent) => {
-      if (event.type === 'output' && event.agentId === agentId && typeof event.data === 'string') {
-        logger.debug(`useOutput: received output event`, { agentId, dataLength: (event.data as string).length });
+      if (event.type === 'output' && event.agentId === agentId && event.data) {
+        const line = event.data as OutputLine;
+        logger.debug(`useOutput: received output event`, { agentId, role: line.role });
         setLines((prev) => {
-          const newLines = [...prev, event.data as string];
+          const newLines = [...prev, line];
           return newLines.slice(-MAX_LINES);
         });
       }

@@ -13,12 +13,13 @@ export interface ParsedEvent {
   type: ParsedEventType;
   raw: ClaudeStreamEvent;
   content?: string;
+  role?: 'user' | 'assistant' | 'tool';
   toolName?: string;
   toolInput?: Record<string, unknown>;
 }
 
 export interface ParserCallbacks {
-  onMessage?: (content: string) => void;
+  onMessage?: (content: string, role?: 'user' | 'assistant' | 'tool') => void;
   onToolUse?: (name: string, input: Record<string, unknown>) => void;
   onInputRequest?: () => void;
   onResult?: (content: string) => void;
@@ -125,6 +126,7 @@ export class OutputParser {
         return {
           type: 'message',
           raw: event,
+          role: 'assistant',
           content: event.message?.content,
         };
 
@@ -132,6 +134,7 @@ export class OutputParser {
         return {
           type: 'result',
           raw: event,
+          role: 'assistant',
           content: event.message?.content,
         };
 
@@ -146,7 +149,8 @@ export class OutputParser {
         return {
           type: 'message',
           raw: event,
-          content: event.message?.content,
+          role: 'user',
+          content: this.extractUserTextContent(event),
         };
 
       default:
@@ -162,7 +166,7 @@ export class OutputParser {
       switch (event.type) {
         case 'message':
           if (event.content && this.callbacks.onMessage) {
-            this.callbacks.onMessage(event.content);
+            this.callbacks.onMessage(event.content, event.role);
           }
           break;
 
@@ -195,6 +199,20 @@ export class OutputParser {
         this.callbacks.onError(error instanceof Error ? error : new Error(String(error)));
       }
     }
+  }
+
+  /** Extract only text content from user events (skip tool_result entries) */
+  private extractUserTextContent(event: ClaudeStreamEvent): string | undefined {
+    const content = event.message?.content;
+    if (!content) return undefined;
+    if (typeof content === 'string') return content;
+    if (Array.isArray(content)) {
+      const textParts = (content as Array<{ type: string; text?: string }>)
+        .filter((block) => block.type === 'text' && block.text)
+        .map((block) => block.text!);
+      return textParts.length > 0 ? textParts.join('\n') : undefined;
+    }
+    return undefined;
   }
 
   flush(): ParsedEvent[] {

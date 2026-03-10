@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { Box, Text, useApp } from 'ink';
+import { Box, Text, useApp, useStdout } from 'ink';
 import { AgentController } from '../agent/AgentController.js';
 import { isTerminalState } from '../agent/state/state.js';
 import { WorktreeManager } from '../worktree/WorktreeManager.js';
@@ -15,6 +15,7 @@ import { NewAgentModal } from './components/NewAgentModal.js';
 import { useAgents } from './hooks/useAgents.js';
 import { useOutput } from './hooks/useOutput.js';
 import { useKeyboard } from './hooks/useKeyboard.js';
+import { useScrollable } from './hooks/useScrollable.js';
 
 interface AppProps {
   projectRoot?: string;
@@ -220,27 +221,12 @@ export function App({ projectRoot }: AppProps) {
   // Attached mode - output + conversation input
   if (viewMode === 'attached' && selectedAgent) {
     return (
-      <Box flexDirection="column" width="100%">
-        <Box borderStyle="single" borderColor="cyan" paddingX={1} justifyContent="space-between">
-          <Box>
-            <Text bold color="cyan">
-              {selectedAgent.name || selectedAgent.id}
-            </Text>
-            <Text> </Text>
-            <StatusIndicator status={selectedAgent.status} />
-          </Box>
-          <Text dimColor>Esc to detach</Text>
-        </Box>
-        <Box flexDirection="column" flexGrow={1} paddingX={1}>
-          {lines.slice(-30).map((line, i) => (
-            <Text key={i}>{line}</Text>
-          ))}
-        </Box>
-        <ConversationInput
-          agent={selectedAgent}
-          onSubmit={handleConversationInput}
-        />
-      </Box>
+      <AttachedView
+        agent={selectedAgent}
+        lines={lines}
+        onConversationInput={handleConversationInput}
+        onDetach={() => setViewMode('list')}
+      />
     );
   }
 
@@ -251,6 +237,68 @@ export function App({ projectRoot }: AppProps) {
       <AgentList agents={agents} selectedIndex={selectedIndex} />
       <Preview agent={selectedAgent} lines={lines} />
       <StatusBar agents={agents} />
+    </Box>
+  );
+}
+
+import { OutputLine } from '../shared/types.js';
+
+interface AttachedViewProps {
+  agent: import('../shared/types.js').AgentInfo;
+  lines: OutputLine[];
+  onConversationInput: (text: string) => void;
+  onDetach: () => void;
+}
+
+function AttachedView({ agent, lines, onConversationInput, onDetach }: AttachedViewProps) {
+  const { stdout } = useStdout();
+  const termHeight = stdout?.rows || 24;
+  // Reserve 3 for header, 3 for input area
+  const visibleLines = Math.max(5, termHeight - 6);
+
+  const { scrollOffset, isAtBottom } = useScrollable({
+    totalLines: lines.length,
+    visibleLines,
+    autoScroll: true,
+    isActive: true,
+  });
+
+  const displayLines = lines.slice(scrollOffset, scrollOffset + visibleLines);
+
+  return (
+    <Box flexDirection="column" width="100%">
+      <Box borderStyle="single" borderColor="cyan" paddingX={1} justifyContent="space-between">
+        <Box>
+          <Text bold color="cyan">
+            {agent.name || agent.id}
+          </Text>
+          <Text> </Text>
+          <StatusIndicator status={agent.status} />
+        </Box>
+        <Box>
+          {lines.length > visibleLines && !isAtBottom && (
+            <Text dimColor>
+              {`${scrollOffset + 1}-${Math.min(scrollOffset + visibleLines, lines.length)}/${lines.length}  `}
+            </Text>
+          )}
+          <Text dimColor>Esc to detach</Text>
+        </Box>
+      </Box>
+      <Box flexDirection="column" flexGrow={1} paddingX={1}>
+        {displayLines.map((line, i) => (
+          <Text key={scrollOffset + i} wrap="truncate">
+            {line.role === 'user' ? (
+              <Text color="green" bold>{'> '}{line.content}</Text>
+            ) : (
+              <Text>{line.content}</Text>
+            )}
+          </Text>
+        ))}
+      </Box>
+      <ConversationInput
+        agent={agent}
+        onSubmit={onConversationInput}
+      />
     </Box>
   );
 }

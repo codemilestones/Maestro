@@ -127,6 +127,12 @@ export interface ArchitectureContract {
   fileChanges: FileChange[];
 }
 
+// Output line with role information for TUI display
+export interface OutputLine {
+  role: 'user' | 'assistant' | 'tool';
+  content: string;
+}
+
 // Claude Code Stream Events
 export interface ClaudeStreamEvent {
   type: 'assistant' | 'user' | 'system' | 'result';
