@@ -89,6 +89,27 @@ export class AgentController {
     }
   }
 
+  /** Extract session_id from the stdout log's init event */
+  private extractSessionIdFromLog(agentId: string): string | null {
+    const logPath = this.getStdoutLogPath(agentId);
+    if (!existsSync(logPath)) return null;
+
+    try {
+      const content = readFileSync(logPath, 'utf-8');
+      // session_id is in the first line (system/init event)
+      const firstLine = content.split('\n').find(l => l.trim());
+      if (!firstLine) return null;
+
+      const event = JSON.parse(firstLine);
+      if (event.type === 'system' && event.subtype === 'init' && event.session_id) {
+        return event.session_id;
+      }
+    } catch {
+      // Ignore errors
+    }
+    return null;
+  }
+
   private restoreAgents(): void {
     const savedAgents = this.store.listAgents();
     this.logger.debug(`Restoring agents from store`, { count: savedAgents.length });
@@ -105,6 +126,16 @@ export class AgentController {
         if (daysSinceFinished > 7) {
           this.logger.debug(`Skipping old terminal agent`, { id: agentInfo.id, status: agentInfo.status, daysSinceFinished });
           continue;
+        }
+
+        // Recover sessionId from log if missing (fd mode doesn't capture via pipe)
+        if (!agentInfo.sessionId) {
+          const sessionId = this.extractSessionIdFromLog(agentInfo.id);
+          if (sessionId) {
+            agentInfo.sessionId = sessionId;
+            this.store.saveAgent(agentInfo);
+            this.logger.debug(`Session ID recovered for terminal agent`, { id: agentInfo.id, sessionId });
+          }
         }
 
         // Add terminal agent to memory map for status display
@@ -134,6 +165,15 @@ export class AgentController {
       // Check if process is still running
       this.logger.debug(`Checking process for agent`, { id: agentInfo.id, pid: agentInfo.pid });
       if (agentInfo.pid && !isProcessRunning(agentInfo.pid)) {
+        // Extract sessionId from log if not already captured (fd mode has no pipe)
+        if (!agentInfo.sessionId) {
+          const sessionId = this.extractSessionIdFromLog(agentInfo.id);
+          if (sessionId) {
+            agentInfo.sessionId = sessionId;
+            this.logger.debug(`Session ID recovered from log on restore`, { id: agentInfo.id, sessionId });
+          }
+        }
+
         // Process not running - check stdout log to determine if it finished successfully
         const completionStatus = this.checkAgentCompletionFromLog(agentInfo.id);
 
@@ -450,6 +490,15 @@ export class AgentController {
 
     // Check if process is still running
     if (info.pid && !isProcessRunning(info.pid)) {
+      // Extract sessionId from log if not already captured (fd mode has no pipe)
+      if (!info.sessionId) {
+        const sessionId = this.extractSessionIdFromLog(info.id);
+        if (sessionId) {
+          info.sessionId = sessionId;
+          this.logger.debug(`Session ID recovered from log`, { id: info.id, sessionId });
+        }
+      }
+
       const completionStatus = this.checkAgentCompletionFromLog(info.id);
 
       if (completionStatus === 'finished') {
